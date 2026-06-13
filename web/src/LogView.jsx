@@ -2,7 +2,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { api } from './api.js';
 import { CAT_META, catColor } from './categories.js';
 
-const LS_CAT = 'gymtracker.logcat';
+const CAT_ORDER = ['upper', 'lower', 'back', 'other'];
 
 const todayStr = () => {
   const d = new Date();
@@ -10,64 +10,52 @@ const todayStr = () => {
   return d.toISOString().slice(0, 10);
 };
 
-// Build draft entries for a set of exercises, preserving anything already typed.
-function initDraft(exercises, prev = {}) {
-  const entries = {};
-  for (const ex of exercises) {
-    if (prev[ex.id]) {
-      entries[ex.id] = prev[ex.id];
-    } else {
-      const n = Math.max(1, ex.default_sets || 3);
-      entries[ex.id] = {
-        sets: Array.from({ length: n }, () => ({ weight: '', reps: '' })),
-        ready_to_progress: false,
-        rpe: '',
-        note: '',
-      };
-    }
-  }
-  return entries;
-}
+const newEntry = (ex) => {
+  const n = Math.max(1, ex?.default_sets || 3);
+  return {
+    sets: Array.from({ length: n }, () => ({ weight: '', reps: '' })),
+    ready_to_progress: false,
+    rpe: '',
+    note: '',
+  };
+};
 
 export default function LogView({ units, onSaved }) {
-  const [cats, setCats] = useState(null);
-  const [category, setCategory] = useState(null);
-  const [data, setData] = useState(null); // { exercises: [...] }
+  const [lib, setLib] = useState(null); // all exercises w/ lastTime + suggestion
+  const [picked, setPicked] = useState([]); // [exId] in the order added
   const [draft, setDraft] = useState({}); // exId -> entry
   const [date, setDate] = useState(todayStr());
   const [cardio, setCardio] = useState('');
   const [notes, setNotes] = useState('');
-  const [adding, setAdding] = useState(false);
+  const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState('');
+  const [newCat, setNewCat] = useState('upper');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
-  // load categories, then default the dropdown (last used, else first)
-  useEffect(() => {
-    api.categories()
-      .then((r) => {
-        setCats(r.categories);
-        const saved = localStorage.getItem(LS_CAT);
-        const valid = r.categories.find((c) => c.key === saved);
-        setCategory(valid ? saved : r.categories[0]?.key || null);
-      })
-      .catch((e) => setError(e.message));
-  }, []);
+  const loadLib = useCallback(
+    () => api.log('').then((r) => setLib(r.exercises)).catch((e) => setError(e.message)),
+    [],
+  );
+  useEffect(() => { loadLib(); }, [loadLib]);
 
-  const loadCategory = useCallback((cat) => {
-    setError('');
-    setData(null);
-    api.log(cat)
-      .then((r) => {
-        setData(r);
-        setDraft((prev) => initDraft(r.exercises, prev));
-      })
-      .catch((e) => setError(e.message));
-  }, []);
+  const exById = (id) => (lib || []).find((e) => e.id === id);
 
-  useEffect(() => {
-    if (category) { localStorage.setItem(LS_CAT, category); loadCategory(category); }
-  }, [category, loadCategory]);
+  // --- session membership ---
+  const addToSession = (ex) => {
+    setPicked((p) => (p.includes(ex.id) ? p : [...p, ex.id]));
+    setDraft((d) => (d[ex.id] ? d : { ...d, [ex.id]: newEntry(ex) }));
+  };
+  const removeFromSession = (exId) => {
+    setPicked((p) => p.filter((x) => x !== exId));
+    setDraft((d) => { const n = { ...d }; delete n[exId]; return n; });
+  };
+  const onSelectAdd = (val) => {
+    if (!val) return;
+    if (val === '__new__') { setCreating(true); return; }
+    const ex = exById(val);
+    if (ex) addToSession(ex);
+  };
 
   // --- draft mutations ---
   const patchEntry = (exId, patch) => setDraft((d) => ({ ...d, [exId]: { ...d[exId], ...patch } }));
@@ -83,14 +71,17 @@ export default function LogView({ units, onSaved }) {
   const fillWeight = (exId, w) =>
     setDraft((d) => ({ ...d, [exId]: { ...d[exId], sets: d[exId].sets.map((s) => ({ ...s, weight: String(w) })) } }));
 
-  const addExercise = async () => {
+  const createExercise = async () => {
     const name = newName.trim();
     if (!name) return;
+    setError('');
     try {
-      await api.addExercise({ name, category });
+      const r = await api.addExercise({ name, category: newCat });
+      const ex = r.exercise;
       setNewName('');
-      setAdding(false);
-      loadCategory(category);
+      setCreating(false);
+      await loadLib();
+      if (ex) addToSession(ex); // newEntry uses the returned exercise, so no stale-lib race
     } catch (e) {
       setError(e.message);
     }
@@ -98,15 +89,15 @@ export default function LogView({ units, onSaved }) {
 
   const buildEntries = () => {
     const out = [];
-    for (const ex of data.exercises) {
-      const e = draft[ex.id];
+    for (const exId of picked) {
+      const e = draft[exId];
       if (!e) continue;
       const sets = e.sets
         .map((s, i) => ({ set_number: i + 1, weight: s.weight, reps: s.reps }))
         .filter((s) => String(s.weight).trim() !== '' || String(s.reps).trim() !== '');
       const hasMeta = e.ready_to_progress || String(e.rpe).trim() !== '' || e.note.trim() !== '';
       if (sets.length || hasMeta) {
-        out.push({ exercise_id: ex.id, sets, ready_to_progress: e.ready_to_progress, rpe: e.rpe === '' ? null : e.rpe, note: e.note });
+        out.push({ exercise_id: exId, sets, ready_to_progress: e.ready_to_progress, rpe: e.rpe === '' ? null : e.rpe, note: e.note });
       }
     }
     return out;
@@ -115,6 +106,9 @@ export default function LogView({ units, onSaved }) {
   const save = async () => {
     const entries = buildEntries();
     if (!entries.length) { setError('Log at least one set before saving.'); return; }
+    // derive the workout's category: a single group -> that group, mixed -> freeform
+    const groups = [...new Set(picked.map((id) => exById(id)?.category).filter(Boolean))];
+    const category = groups.length === 1 ? groups[0] : null;
     setSaving(true);
     setError('');
     try {
@@ -128,111 +122,131 @@ export default function LogView({ units, onSaved }) {
 
   return (
     <div>
-      <h1>Log a workout</h1>
-
-      <div className="log-head">
-        <select className="cat-select" value={category || ''} onChange={(e) => setCategory(e.target.value)} disabled={!cats}>
-          {!cats && <option>Loading…</option>}
-          {cats?.map((c) => (
-            <option key={c.key} value={c.key}>
-              {(CAT_META[c.key]?.label || c.label)} · {c.count}
-            </option>
-          ))}
-        </select>
+      <div className="between">
+        <h1 style={{ marginBottom: 0 }}>Log a workout</h1>
         <input type="date" value={date} onChange={(e) => setDate(e.target.value)} style={{ width: 'auto' }} />
       </div>
 
-      {error && <div className="banner error">{error}</div>}
-
-      {!data ? (
-        <div className="spinner">Loading…</div>
-      ) : (
-        <>
-          {data.exercises.length === 0 && (
-            <div className="empty">No exercises in this category yet. Add one below.</div>
-          )}
-
-          {data.exercises.map((ex) => {
-            const e = draft[ex.id];
-            if (!e) return null;
-            const lt = ex.lastTime;
-            const sug = ex.suggestion;
+      {/* grouped exercise picker */}
+      <div style={{ marginTop: 16 }}>
+        <select
+          className="cat-select"
+          value=""
+          disabled={!lib}
+          onChange={(e) => onSelectAdd(e.target.value)}
+          style={{ width: '100%' }}
+        >
+          <option value="">{lib ? '+ Add exercise…' : 'Loading…'}</option>
+          {CAT_ORDER.map((catKey) => {
+            const items = (lib || []).filter((e) => e.category === catKey && !picked.includes(e.id));
+            if (!items.length) return null;
             return (
-              <div className="card" key={ex.id}>
-                <div className="between">
-                  <div className="act-head">
-                    <span className="cat-dot" style={{ background: catColor(category) }} />
-                    <h2 style={{ margin: 0 }}>{ex.name}</h2>
-                  </div>
-                  <span className="faint" style={{ fontSize: 12, fontWeight: 700 }}>{ex.default_sets}×{ex.default_reps}</span>
-                </div>
-
-                <div className="lasttime" style={{ marginTop: 6 }}>
-                  {lt && lt.topSet ? (
-                    <>Last time: <b>{lt.topSet.weight ?? '—'}{lt.topSet.weight != null ? ` ${units}` : ''} × {lt.topSet.reps ?? '—'}</b>
-                      {lt.e1rm != null && <span className="faint"> · e1RM {Math.round(lt.e1rm)}</span>}
-                    </>
-                  ) : (
-                    <span className="faint">No history yet — first time logging this.</span>
-                  )}
-                </div>
-
-                {sug && (
-                  <div style={{ marginTop: 9 }}>
-                    <button className="chip accent" onClick={() => fillWeight(ex.id, sug.weight)} title={sug.reason}>
-                      ⬆ Try {sug.weight} {units} — {sug.reason}
-                    </button>
-                  </div>
-                )}
-
-                {e.sets.map((s, i) => (
-                  <div className="set-row" key={i}>
-                    <span className="setno">{i + 1}</span>
-                    <input
-                      type="number" inputMode="decimal" placeholder={lt?.topSet?.weight != null ? `${lt.topSet.weight} ${units}` : units}
-                      value={s.weight} onChange={(ev) => patchSet(ex.id, i, 'weight', ev.target.value)}
-                    />
-                    <input
-                      type="number" inputMode="numeric" placeholder={lt?.topSet?.reps != null ? `${lt.topSet.reps} reps` : `${ex.default_reps} reps`}
-                      value={s.reps} onChange={(ev) => patchSet(ex.id, i, 'reps', ev.target.value)}
-                    />
-                    <button className="iconbtn" style={{ width: 34, height: 34 }} onClick={() => removeSet(ex.id, i)} title="Remove set" disabled={e.sets.length <= 1}>×</button>
-                  </div>
+              <optgroup key={catKey} label={CAT_META[catKey]?.label || catKey}>
+                {items.map((e) => (
+                  <option key={e.id} value={e.id}>{e.name}</option>
                 ))}
-                <button className="linkish" style={{ marginTop: 10 }} onClick={() => addSet(ex.id)}>+ set</button>
-
-                <div className="meta-row">
-                  <label className="toggle">
-                    <input type="checkbox" checked={e.ready_to_progress} onChange={(ev) => patchEntry(ex.id, { ready_to_progress: ev.target.checked })} />
-                    Ready for more weight?
-                  </label>
-                  <label className="toggle">
-                    RPE
-                    <input className="rpe-input" type="number" min="1" max="10" step="0.5" value={e.rpe} onChange={(ev) => patchEntry(ex.id, { rpe: ev.target.value })} />
-                  </label>
-                </div>
-                <input style={{ marginTop: 10 }} type="text" placeholder="Note (optional)" value={e.note} onChange={(ev) => patchEntry(ex.id, { note: ev.target.value })} />
-              </div>
+              </optgroup>
             );
           })}
+          <option value="__new__">➕ Create new exercise…</option>
+        </select>
+      </div>
 
-          {/* add exercise */}
-          {adding ? (
-            <div className="card">
-              <label className="field">
-                <span>New exercise name ({CAT_META[category]?.label || category})</span>
-                <input autoFocus type="text" value={newName} onChange={(e) => setNewName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && addExercise()} />
-              </label>
-              <div className="row">
-                <button className="btn small" onClick={addExercise} disabled={!newName.trim()}>Add</button>
-                <button className="btn ghost small" onClick={() => { setAdding(false); setNewName(''); }}>Cancel</button>
+      {error && <div className="banner error" style={{ marginTop: 12 }}>{error}</div>}
+
+      {/* create-new form */}
+      {creating && (
+        <div className="card" style={{ marginTop: 12 }}>
+          <label className="field">
+            <span>New exercise name</span>
+            <input autoFocus type="text" value={newName} onChange={(e) => setNewName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && createExercise()} />
+          </label>
+          <label className="field" style={{ marginBottom: 12 }}>
+            <span>Muscle group</span>
+            <select value={newCat} onChange={(e) => setNewCat(e.target.value)}>
+              {CAT_ORDER.map((k) => <option key={k} value={k}>{CAT_META[k]?.label || k}</option>)}
+            </select>
+          </label>
+          <div className="row">
+            <button className="btn small" onClick={createExercise} disabled={!newName.trim()}>Create & add</button>
+            <button className="btn ghost small" onClick={() => { setCreating(false); setNewName(''); }}>Cancel</button>
+          </div>
+        </div>
+      )}
+
+      {/* picked exercise cards */}
+      {picked.length === 0 && !creating && (
+        <div className="empty">Add exercises from the dropdown to build your workout.</div>
+      )}
+
+      {picked.map((exId) => {
+        const ex = exById(exId);
+        const e = draft[exId];
+        if (!ex || !e) return null;
+        const lt = ex.lastTime;
+        const sug = ex.suggestion;
+        return (
+          <div className="card" key={exId}>
+            <div className="between">
+              <div className="act-head">
+                <span className="cat-dot" style={{ background: catColor(ex.category) }} />
+                <h2 style={{ margin: 0 }}>{ex.name}</h2>
               </div>
+              <button className="iconbtn" style={{ width: 32, height: 32 }} title="Remove from workout" onClick={() => removeFromSession(exId)}>×</button>
             </div>
-          ) : (
-            <button className="btn ghost block" style={{ marginTop: 12 }} onClick={() => setAdding(true)}>+ Add exercise</button>
-          )}
 
-          {/* session extras */}
+            <div className="lasttime" style={{ marginTop: 6 }}>
+              {lt && lt.topSet ? (
+                <>Last time: <b>{lt.topSet.weight ?? '—'}{lt.topSet.weight != null ? ` ${units}` : ''} × {lt.topSet.reps ?? '—'}</b>
+                  {lt.e1rm != null && <span className="faint"> · e1RM {Math.round(lt.e1rm)}</span>}
+                </>
+              ) : (
+                <span className="faint">No history yet — first time logging this.</span>
+              )}
+            </div>
+
+            {sug && (
+              <div style={{ marginTop: 9 }}>
+                <button className="chip accent" onClick={() => fillWeight(exId, sug.weight)} title={sug.reason}>
+                  ⬆ Try {sug.weight} {units} — {sug.reason}
+                </button>
+              </div>
+            )}
+
+            {e.sets.map((s, i) => (
+              <div className="set-row" key={i}>
+                <span className="setno">{i + 1}</span>
+                <input
+                  type="number" inputMode="decimal" placeholder={lt?.topSet?.weight != null ? `${lt.topSet.weight} ${units}` : units}
+                  value={s.weight} onChange={(ev) => patchSet(exId, i, 'weight', ev.target.value)}
+                />
+                <input
+                  type="number" inputMode="numeric" placeholder={lt?.topSet?.reps != null ? `${lt.topSet.reps} reps` : `${ex.default_reps} reps`}
+                  value={s.reps} onChange={(ev) => patchSet(exId, i, 'reps', ev.target.value)}
+                />
+                <button className="iconbtn" style={{ width: 34, height: 34 }} onClick={() => removeSet(exId, i)} title="Remove set" disabled={e.sets.length <= 1}>×</button>
+              </div>
+            ))}
+            <button className="linkish" style={{ marginTop: 10 }} onClick={() => addSet(exId)}>+ set</button>
+
+            <div className="meta-row">
+              <label className="toggle">
+                <input type="checkbox" checked={e.ready_to_progress} onChange={(ev) => patchEntry(exId, { ready_to_progress: ev.target.checked })} />
+                Ready for more weight?
+              </label>
+              <label className="toggle">
+                RPE
+                <input className="rpe-input" type="number" min="1" max="10" step="0.5" value={e.rpe} onChange={(ev) => patchEntry(exId, { rpe: ev.target.value })} />
+              </label>
+            </div>
+            <input style={{ marginTop: 10 }} type="text" placeholder="Note (optional)" value={e.note} onChange={(ev) => patchEntry(exId, { note: ev.target.value })} />
+          </div>
+        );
+      })}
+
+      {/* session extras + save (only once you've added something) */}
+      {picked.length > 0 && (
+        <>
           <div className="section-title">Session</div>
           <div className="card">
             <input type="text" placeholder="Cardio / steps (optional)" value={cardio} onChange={(e) => setCardio(e.target.value)} />
@@ -240,7 +254,7 @@ export default function LogView({ units, onSaved }) {
           </div>
 
           <button className="btn block" style={{ marginTop: 16 }} onClick={save} disabled={saving}>
-            {saving ? 'Saving…' : 'Save workout'}
+            {saving ? 'Saving…' : `Save workout (${picked.length})`}
           </button>
         </>
       )}
