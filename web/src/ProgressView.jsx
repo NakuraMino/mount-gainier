@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import {
-  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Brush,
+  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Brush,
 } from 'recharts';
 import { api } from './api.js';
 
@@ -16,7 +16,7 @@ const METRICS = [
   { key: 'e1rm', label: 'Est. 1RM' },
   { key: 'volume', label: 'Volume' },
 ];
-const ACCENT = '#22c55e';
+const ACCENT = '#fc5200';
 const shortDate = (s) => {
   const d = new Date(s + 'T00:00:00');
   return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
@@ -97,7 +97,13 @@ export default function ProgressView({ units }) {
             ) : (
               <div className="chart-box">
                 <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={series} margin={{ top: 6, right: 10, bottom: 0, left: -8 }}>
+                  <AreaChart data={series} margin={{ top: 6, right: 10, bottom: 0, left: -8 }}>
+                    <defs>
+                      <linearGradient id="fillAccent" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor={ACCENT} stopOpacity={0.35} />
+                        <stop offset="100%" stopColor={ACCENT} stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
                     <CartesianGrid stroke="var(--line)" vertical={false} />
                     <XAxis dataKey="date" tickFormatter={shortDate} tick={{ fill: 'var(--text-faint)', fontSize: 11 }} stroke="var(--line)" minTickGap={24} />
                     <YAxis tick={{ fill: 'var(--text-faint)', fontSize: 11 }} stroke="var(--line)" width={44} domain={['auto', 'auto']} />
@@ -106,9 +112,9 @@ export default function ProgressView({ units }) {
                       labelFormatter={(d) => shortDate(d)}
                       formatter={(v) => [metric === 'weight' ? `${v} ${units}` : v, metricLabel]}
                     />
-                    <Line type="monotone" dataKey={metric} stroke={ACCENT} strokeWidth={2.5} dot={{ r: 2.5 }} activeDot={{ r: 5 }} connectNulls />
+                    <Area type="monotone" dataKey={metric} stroke={ACCENT} strokeWidth={2.5} fill="url(#fillAccent)" dot={{ r: 2.5, fill: ACCENT }} activeDot={{ r: 5 }} connectNulls />
                     {series.length > 6 && <Brush dataKey="date" height={22} stroke={ACCENT} tickFormatter={shortDate} travellerWidth={8} />}
-                  </LineChart>
+                  </AreaChart>
                 </ResponsiveContainer>
               </div>
             )}

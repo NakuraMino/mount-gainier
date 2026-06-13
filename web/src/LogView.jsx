@@ -1,5 +1,8 @@
 import { useEffect, useState, useCallback } from 'react';
 import { api } from './api.js';
+import { CAT_META, catColor } from './categories.js';
+
+const LS_CAT = 'gymtracker.logcat';
 
 const todayStr = () => {
   const d = new Date();
@@ -39,14 +42,22 @@ export default function LogView({ units, onSaved }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
+  // load categories, then default the dropdown (last used, else first)
   useEffect(() => {
-    api.categories().then((r) => setCats(r.categories)).catch((e) => setError(e.message));
+    api.categories()
+      .then((r) => {
+        setCats(r.categories);
+        const saved = localStorage.getItem(LS_CAT);
+        const valid = r.categories.find((c) => c.key === saved);
+        setCategory(valid ? saved : r.categories[0]?.key || null);
+      })
+      .catch((e) => setError(e.message));
   }, []);
 
   const loadCategory = useCallback((cat) => {
     setError('');
-    api
-      .log(cat)
+    setData(null);
+    api.log(cat)
       .then((r) => {
         setData(r);
         setDraft((prev) => initDraft(r.exercises, prev));
@@ -54,12 +65,9 @@ export default function LogView({ units, onSaved }) {
       .catch((e) => setError(e.message));
   }, []);
 
-  const pick = (cat) => {
-    setCategory(cat);
-    setData(null);
-    setDraft({});
-    loadCategory(cat);
-  };
+  useEffect(() => {
+    if (category) { localStorage.setItem(LS_CAT, category); loadCategory(category); }
+  }, [category, loadCategory]);
 
   // --- draft mutations ---
   const patchEntry = (exId, patch) => setDraft((d) => ({ ...d, [exId]: { ...d[exId], ...patch } }));
@@ -118,37 +126,21 @@ export default function LogView({ units, onSaved }) {
     }
   };
 
-  // --- category picker ---
-  if (!category) {
-    return (
-      <div>
-        <h1>What are you training today?</h1>
-        {error && <div className="banner error">{error}</div>}
-        {!cats ? (
-          <div className="spinner">Loading…</div>
-        ) : (
-          <div className="cat-grid">
-            {cats.map((c) => (
-              <button key={c.key} className="cat-tile" onClick={() => pick(c.key)}>
-                <span className="big">{c.label}</span>
-                <span className="muted">{c.count} exercise{c.count === 1 ? '' : 's'}</span>
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
-    );
-  }
-
-  const catLabel = cats?.find((c) => c.key === category)?.label || category;
-
   return (
     <div>
-      <div className="between">
-        <button className="linkish" onClick={() => setCategory(null)}>← Categories</button>
+      <h1>Log a workout</h1>
+
+      <div className="log-head">
+        <select className="cat-select" value={category || ''} onChange={(e) => setCategory(e.target.value)} disabled={!cats}>
+          {!cats && <option>Loading…</option>}
+          {cats?.map((c) => (
+            <option key={c.key} value={c.key}>
+              {(CAT_META[c.key]?.label || c.label)} · {c.count}
+            </option>
+          ))}
+        </select>
         <input type="date" value={date} onChange={(e) => setDate(e.target.value)} style={{ width: 'auto' }} />
       </div>
-      <h1 style={{ marginTop: 10 }}>{catLabel}</h1>
 
       {error && <div className="banner error">{error}</div>}
 
@@ -156,6 +148,10 @@ export default function LogView({ units, onSaved }) {
         <div className="spinner">Loading…</div>
       ) : (
         <>
+          {data.exercises.length === 0 && (
+            <div className="empty">No exercises in this category yet. Add one below.</div>
+          )}
+
           {data.exercises.map((ex) => {
             const e = draft[ex.id];
             if (!e) return null;
@@ -164,11 +160,14 @@ export default function LogView({ units, onSaved }) {
             return (
               <div className="card" key={ex.id}>
                 <div className="between">
-                  <h2 style={{ margin: 0 }}>{ex.name}</h2>
-                  <span className="faint" style={{ fontSize: 12 }}>{ex.default_sets}×{ex.default_reps}</span>
+                  <div className="act-head">
+                    <span className="cat-dot" style={{ background: catColor(category) }} />
+                    <h2 style={{ margin: 0 }}>{ex.name}</h2>
+                  </div>
+                  <span className="faint" style={{ fontSize: 12, fontWeight: 700 }}>{ex.default_sets}×{ex.default_reps}</span>
                 </div>
 
-                <div className="lasttime" style={{ marginTop: 4 }}>
+                <div className="lasttime" style={{ marginTop: 6 }}>
                   {lt && lt.topSet ? (
                     <>Last time: <b>{lt.topSet.weight ?? '—'}{lt.topSet.weight != null ? ` ${units}` : ''} × {lt.topSet.reps ?? '—'}</b>
                       {lt.e1rm != null && <span className="faint"> · e1RM {Math.round(lt.e1rm)}</span>}
@@ -179,7 +178,7 @@ export default function LogView({ units, onSaved }) {
                 </div>
 
                 {sug && (
-                  <div style={{ marginTop: 8 }}>
+                  <div style={{ marginTop: 9 }}>
                     <button className="chip accent" onClick={() => fillWeight(ex.id, sug.weight)} title={sug.reason}>
                       ⬆ Try {sug.weight} {units} — {sug.reason}
                     </button>
@@ -197,10 +196,10 @@ export default function LogView({ units, onSaved }) {
                       type="number" inputMode="numeric" placeholder={lt?.topSet?.reps != null ? `${lt.topSet.reps} reps` : `${ex.default_reps} reps`}
                       value={s.reps} onChange={(ev) => patchSet(ex.id, i, 'reps', ev.target.value)}
                     />
-                    <button className="iconbtn" style={{ width: 32, height: 32 }} onClick={() => removeSet(ex.id, i)} title="Remove set" disabled={e.sets.length <= 1}>×</button>
+                    <button className="iconbtn" style={{ width: 34, height: 34 }} onClick={() => removeSet(ex.id, i)} title="Remove set" disabled={e.sets.length <= 1}>×</button>
                   </div>
                 ))}
-                <button className="linkish" style={{ marginTop: 8 }} onClick={() => addSet(ex.id)}>+ set</button>
+                <button className="linkish" style={{ marginTop: 10 }} onClick={() => addSet(ex.id)}>+ set</button>
 
                 <div className="meta-row">
                   <label className="toggle">
@@ -221,7 +220,7 @@ export default function LogView({ units, onSaved }) {
           {adding ? (
             <div className="card">
               <label className="field">
-                <span>New exercise name ({catLabel})</span>
+                <span>New exercise name ({CAT_META[category]?.label || category})</span>
                 <input autoFocus type="text" value={newName} onChange={(e) => setNewName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && addExercise()} />
               </label>
               <div className="row">
