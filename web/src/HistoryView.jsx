@@ -100,7 +100,7 @@ export default function HistoryView({ units }) {
                       {(en.ready_to_progress || en.rpe != null || en.note) && (
                         <div className="row" style={{ gap: 8, marginTop: 7, flexWrap: 'wrap' }}>
                           {en.ready_to_progress && <span className="chip accent" style={{ cursor: 'default' }}>ready for more</span>}
-                          {en.rpe != null && <span className="chip">RPE {en.rpe}</span>}
+                          {en.rpe != null && <span className="chip">effort {en.rpe}/10</span>}
                           {en.note && <span className="faint" style={{ fontSize: 13 }}>“{en.note}”</span>}
                         </div>
                       )}
