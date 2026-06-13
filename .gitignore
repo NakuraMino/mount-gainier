@@ -1,0 +1,11 @@
+node_modules/
+web/node_modules/
+web/dist/
+*.log
+.DS_Store
+
+# secrets + deploy
+.env
+.env.local
+.env*.local
+.vercel

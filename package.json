@@ -1,0 +1,23 @@
+{
+  "name": "gym-tracker",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Personal gym progress tracker — log workouts, track PRs, chart progress.",
+  "scripts": {
+    "build:web": "npm --prefix web install && npm --prefix web run build",
+    "dev": "concurrently -k -n server,web -c blue,green \"node --env-file=.env.local server/index.mjs\" \"npm --prefix web run dev\"",
+    "start": "node --env-file=.env.local server/index.mjs",
+    "seed": "node --env-file=.env.local scripts/seed.mjs",
+    "create-user": "node --env-file=.env.local scripts/create-user.mjs",
+    "setup": "npm install && npm run build:web"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.45.0",
+    "express": "^4.21.2",
+    "ws": "^8.21.0"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}
