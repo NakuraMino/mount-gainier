@@ -34,7 +34,7 @@ export default function ProgressView({ units, sex, ageBand }) {
   const [stats, setStats] = useState(null);
   const [exercises, setExercises] = useState(null);
   const [exId, setExId] = useState('');
-  const [metric, setMetric] = useState('e1rm');
+  const [metric, setMetric] = useState('weight');
   const [range, setRange] = useState('all');
   const [data, setData] = useState(null);
   const [main, setMain] = useState(null); // user's main-lift bests
@@ -61,7 +61,7 @@ export default function ProgressView({ units, sex, ageBand }) {
     const sel = exercises.find((e) => e.id === exId);
     if (!sel) return;
     const repsOnly = (sel.equipment || '').toLowerCase() === 'bodyweight';
-    setMetric((m) => (repsOnly ? 'maxReps' : m === 'maxReps' ? 'e1rm' : m));
+    setMetric((m) => (repsOnly ? 'maxReps' : m === 'maxReps' ? 'weight' : m));
   }, [exId, exercises]);
 
   const metricLabel = METRICS.find((m) => m.key === metric)?.label;
