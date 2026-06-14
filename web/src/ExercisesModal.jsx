@@ -47,7 +47,8 @@ function ExerciseForm({ initial, onSave, onCancel, saving }) {
   );
 }
 
-export default function ExercisesModal({ me, units, onUnits, onLogout, onClose }) {
+// The exercise library: add / edit / delete, grouped by category.
+export default function ExercisesModal({ onClose }) {
   const [list, setList] = useState(null);
   const [error, setError] = useState('');
   const [editing, setEditing] = useState(null); // exercise id
@@ -74,53 +75,20 @@ export default function ExercisesModal({ me, units, onUnits, onLogout, onClose }
     try { await api.deleteExercise(ex.id); load(); } catch (e) { setError(e.message); }
   };
 
-  const exportCsv = async () => {
-    try {
-      const blob = await api.exportCsv();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url; a.download = 'gym_log.csv';
-      document.body.appendChild(a); a.click(); a.remove();
-      URL.revokeObjectURL(url);
-    } catch (e) { setError(e.message); }
-  };
-
   return (
     <div className="modal-backdrop" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
         <div className="between">
-          <h2 style={{ margin: 0 }}>Settings</h2>
-          <button className="iconbtn" onClick={onClose}>×</button>
-        </div>
-
-        {/* account */}
-        <div className="card" style={{ marginTop: 12 }}>
-          <div className="between">
-            <div>
-              <div>Signed in as <b>{me?.username || '…'}</b> {me?.isAdmin && <span className="chip" style={{ marginLeft: 6 }}>admin</span>}</div>
-            </div>
-            <button className="btn ghost small" onClick={onLogout}>Log out</button>
-          </div>
-          <div className="row" style={{ marginTop: 12, gap: 10 }}>
-            <span className="muted" style={{ fontSize: 13 }}>Units</span>
-            <div className="segmented">
-              <button className={units === 'lb' ? 'active' : ''} onClick={() => onUnits('lb')}>lb</button>
-              <button className={units === 'kg' ? 'active' : ''} onClick={() => onUnits('kg')}>kg</button>
-            </div>
-            <div className="spacer" style={{ flex: 1 }} />
-            <button className="btn ghost small" onClick={exportCsv}>⬇ Export CSV</button>
+          <h2 style={{ margin: 0 }}>Exercises</h2>
+          <div className="row" style={{ gap: 6 }}>
+            {!adding && <button className="btn small" onClick={() => setAdding(true)}>+ Add</button>}
+            <button className="iconbtn" onClick={onClose}>×</button>
           </div>
         </div>
 
         {error && <div className="banner error" style={{ marginTop: 12 }}>{error}</div>}
 
-        {/* exercises */}
-        <div className="between" style={{ marginTop: 18 }}>
-          <h2 style={{ margin: 0 }}>Exercises</h2>
-          {!adding && <button className="btn small" onClick={() => setAdding(true)}>+ Add</button>}
-        </div>
-
-        {adding && <div style={{ marginTop: 10 }}><ExerciseForm initial={blank} saving={saving} onSave={create} onCancel={() => setAdding(false)} /></div>}
+        {adding && <div style={{ marginTop: 12 }}><ExerciseForm initial={blank} saving={saving} onSave={create} onCancel={() => setAdding(false)} /></div>}
 
         {!list ? (
           <div className="spinner">Loading…</div>

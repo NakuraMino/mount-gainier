@@ -4,7 +4,7 @@ import {
   RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis, Legend,
 } from 'recharts';
 import { api } from './api.js';
-import { LIFT_DEFS, AGE_BANDS, benchmarks } from './benchmarks.js';
+import { LIFT_DEFS, benchmarks } from './benchmarks.js';
 
 const RANGES = [
   { key: '1m', label: '1M' }, { key: '3m', label: '3M' }, { key: '6m', label: '6M' },
@@ -14,8 +14,6 @@ const METRICS = [
   { key: 'weight', label: 'Weight' }, { key: 'e1rm', label: 'Est. 1RM' }, { key: 'volume', label: 'Volume' },
 ];
 const ACCENT = '#fc5200';
-const LS_SEX = 'gymtracker.sex';
-const LS_AGE = 'gymtracker.ageband';
 const shortDate = (s) => new Date(s + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 
 function RadarTip({ active, payload }) {
@@ -31,7 +29,7 @@ function RadarTip({ active, payload }) {
   );
 }
 
-export default function ProgressView({ units }) {
+export default function ProgressView({ units, sex, ageBand }) {
   const [stats, setStats] = useState(null);
   const [exercises, setExercises] = useState(null);
   const [exId, setExId] = useState('');
@@ -39,8 +37,6 @@ export default function ProgressView({ units }) {
   const [range, setRange] = useState('all');
   const [data, setData] = useState(null);
   const [main, setMain] = useState(null); // user's main-lift bests
-  const [sex, setSex] = useState(localStorage.getItem(LS_SEX) || 'male');
-  const [band, setBand] = useState(localStorage.getItem(LS_AGE) || '25-34');
   const [error, setError] = useState('');
 
   useEffect(() => {
@@ -51,9 +47,6 @@ export default function ProgressView({ units }) {
       if (r.exercises.length) setExId((cur) => cur || r.exercises[0].id);
     }).catch((e) => setError(e.message));
   }, []);
-
-  useEffect(() => { localStorage.setItem(LS_SEX, sex); }, [sex]);
-  useEffect(() => { localStorage.setItem(LS_AGE, band); }, [band]);
 
   useEffect(() => {
     if (!exId) return;
@@ -66,7 +59,7 @@ export default function ProgressView({ units }) {
   const hasData = series.some((p) => p[metric] != null);
 
   // --- radar: you vs average for the chosen group ---
-  const avg = benchmarks(sex, band, units);
+  const avg = benchmarks(sex, ageBand, units);
   const mainByKey = Object.fromEntries((main || []).map((l) => [l.key, l]));
   const radarData = LIFT_DEFS.map((def) => {
     const u = mainByKey[def.key];
@@ -96,17 +89,8 @@ export default function ProgressView({ units }) {
         </div>
       )}
 
-      {/* --- strength vs average radar --- */}
+      {/* --- strength vs average radar (group set in Settings) --- */}
       <div className="section-title">Strength vs average</div>
-      <div className="row" style={{ gap: 10, flexWrap: 'wrap' }}>
-        <div className="segmented">
-          <button className={sex === 'male' ? 'active' : ''} onClick={() => setSex('male')}>Male</button>
-          <button className={sex === 'female' ? 'active' : ''} onClick={() => setSex('female')}>Female</button>
-        </div>
-        <select value={band} onChange={(e) => setBand(e.target.value)} style={{ width: 'auto' }}>
-          {AGE_BANDS.map((b) => <option key={b} value={b}>{b}</option>)}
-        </select>
-      </div>
 
       <div className="card" style={{ marginTop: 12 }}>
         <div className="chart-box">
@@ -115,7 +99,7 @@ export default function ProgressView({ units }) {
               <PolarGrid stroke="var(--line)" />
               <PolarAngleAxis dataKey="lift" tick={{ fill: 'var(--text-dim)', fontSize: 11 }} />
               <PolarRadiusAxis domain={[0, 2]} tick={false} axisLine={false} />
-              <Radar name={`Avg (${sex === 'male' ? 'M' : 'F'} ${band})`} dataKey="avg" stroke="var(--text-faint)" fill="var(--text-faint)" fillOpacity={0.12} />
+              <Radar name={`Avg (${sex === 'male' ? 'M' : 'F'} ${ageBand})`} dataKey="avg" stroke="var(--text-faint)" fill="var(--text-faint)" fillOpacity={0.12} />
               <Radar name="You" dataKey="you" stroke={ACCENT} fill={ACCENT} fillOpacity={0.4} />
               <Legend />
               <Tooltip content={<RadarTip />} />

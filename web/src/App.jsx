@@ -6,9 +6,12 @@ import LogView from './LogView.jsx';
 import HistoryView from './HistoryView.jsx';
 import ProgressView from './ProgressView.jsx';
 import ExercisesModal from './ExercisesModal.jsx';
+import SettingsModal from './SettingsModal.jsx';
 
 const LS_TAB = 'gymtracker.tab';
 const LS_THEME = 'gymtracker.theme';
+const LS_SEX = 'gymtracker.sex';
+const LS_AGE = 'gymtracker.ageband';
 
 const TABS = [
   { key: 'log', label: 'Log', ico: '➕' },
@@ -22,6 +25,11 @@ export default function App() {
   const [prefs, setPrefs] = useState({ units: 'lb' });
   const [tab, setTab] = useState(localStorage.getItem(LS_TAB) || 'log');
   const [showExercises, setShowExercises] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const [sex, setSex] = useState(localStorage.getItem(LS_SEX) || 'male');
+  const [ageBand, setAgeBand] = useState(localStorage.getItem(LS_AGE) || '25-34');
+  useEffect(() => localStorage.setItem(LS_SEX, sex), [sex]);
+  useEffect(() => localStorage.setItem(LS_AGE, ageBand), [ageBand]);
 
   const [theme, setTheme] = useState(() => document.documentElement.getAttribute('data-theme') || 'dark');
   useEffect(() => {
@@ -82,7 +90,8 @@ export default function App() {
           <img src="/icon.svg" alt="" /> Gym Tracker
         </div>
         <div className="spacer" />
-        <button className="iconbtn" title="Exercises & settings" onClick={() => setShowExercises(true)}>⚙️</button>
+        <button className="iconbtn" title="Exercises" onClick={() => setShowExercises(true)}>🏋️</button>
+        <button className="iconbtn" title="Settings" onClick={() => setShowSettings(true)}>⚙️</button>
         <button
           className="iconbtn"
           title={theme === 'light' ? 'Night mode' : 'Day mode'}
@@ -95,7 +104,7 @@ export default function App() {
       <main className="content">
         {tab === 'log' && <LogView units={units} onSaved={() => setTab('history')} />}
         {tab === 'history' && <HistoryView units={units} />}
-        {tab === 'progress' && <ProgressView units={units} />}
+        {tab === 'progress' && <ProgressView units={units} sex={sex} ageBand={ageBand} />}
       </main>
 
       <nav className="tabbar">
@@ -107,13 +116,19 @@ export default function App() {
         ))}
       </nav>
 
-      {showExercises && (
-        <ExercisesModal
+      {showExercises && <ExercisesModal onClose={() => setShowExercises(false)} />}
+
+      {showSettings && (
+        <SettingsModal
           me={me}
           units={units}
           onUnits={(u) => api.setPrefs({ units: u }).then(() => refreshPrefs())}
+          sex={sex}
+          ageBand={ageBand}
+          onSex={setSex}
+          onAgeBand={setAgeBand}
           onLogout={logout}
-          onClose={() => setShowExercises(false)}
+          onClose={() => setShowSettings(false)}
         />
       )}
     </div>
