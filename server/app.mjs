@@ -14,7 +14,7 @@ import { requireAuth, requireAdmin, createAccount } from './auth.mjs';
 import {
   listExercises, addExercise, updateExercise, deleteExercise, categoryCounts,
   logScreen, listSessions, createSession, updateSession, getWorkout, deleteWorkout,
-  exerciseHistory, progress, stats, getPrefs, setPrefs, exportRows,
+  exerciseHistory, progress, stats, getPrefs, setPrefs, exportRows, mainLifts,
 } from './db.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -98,6 +98,7 @@ api.get('/progress/:exerciseId', wrap(async (req, res) => {
   res.json(await progress(req.userId, req.params.exerciseId, String(req.query.range || 'all')));
 }));
 api.get('/stats', wrap(async (req, res) => res.json(await stats(req.userId))));
+api.get('/main-lifts', wrap(async (req, res) => res.json({ lifts: await mainLifts(req.userId) })));
 api.get('/prefs', wrap(async (req, res) => res.json(await getPrefs(req.userId))));
 api.post('/prefs', wrap(async (req, res) => res.json(await setPrefs(req.userId, req.body || {}))));
 

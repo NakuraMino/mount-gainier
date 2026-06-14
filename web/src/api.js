@@ -51,6 +51,7 @@ export const api = {
 
   progress: (exerciseId, range) => j(`/api/progress/${exerciseId}?range=${encodeURIComponent(range || 'all')}`),
   stats: () => j('/api/stats'),
+  mainLifts: () => j('/api/main-lifts'),
 
   prefs: () => j('/api/prefs'),
   setPrefs: (b) => post('/api/prefs', b),

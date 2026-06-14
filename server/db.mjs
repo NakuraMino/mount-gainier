@@ -427,6 +427,59 @@ export async function exerciseHistory(userId, exerciseId) {
   return { exerciseId, sessions: sessionsForExercise(sets, meta, exerciseId) };
 }
 
+// --- main-lifts histogram ----------------------------------------------------
+// A fixed set of "big" lifts, matched against the user's library by name (so it
+// works without any per-exercise flag). Each returns the best estimated 1RM seen.
+const MAIN_LIFTS = [
+  { key: 'bench', label: 'Bench', match: ['barbell bench', 'bench press'], exclude: [] },
+  { key: 'db_press', label: 'DB Press', match: ['dumbbell bench', 'dumbbell press', 'db press', 'db bench', 'arnold'], exclude: [] },
+  { key: 'squat', label: 'Squat', match: ['squat'], exclude: [] },
+  { key: 'pullup', label: 'Pull-ups', match: ['pull-up', 'pull up', 'pullup', 'chin-up', 'chin up'], exclude: ['pulldown', 'pull-down', 'pull down'] },
+  { key: 'pulldown', label: 'Pulldown', match: ['lat pulldown', 'lat pull', 'pulldown', 'pull-down', 'pull down'], exclude: ['tricep'] },
+  { key: 'rdl', label: 'RDL', match: ['romanian', 'rdl'], exclude: [] },
+];
+
+export async function mainLifts(userId) {
+  const exList = await listExercises(userId);
+  const { sets } = await loadHistory(userId);
+
+  // best e1RM + heaviest weight + best reps per exercise id
+  const stat = new Map();
+  for (const s of sets) {
+    const cur = stat.get(s.exercise_id) || { e1rm: null, maxWeight: null, bestReps: null };
+    const e = epley(s.weight, s.reps);
+    if (e != null && (cur.e1rm == null || e > cur.e1rm)) cur.e1rm = e;
+    if (s.weight != null && (cur.maxWeight == null || s.weight > cur.maxWeight)) cur.maxWeight = s.weight;
+    if (s.reps != null && (cur.bestReps == null || s.reps > cur.bestReps)) cur.bestReps = s.reps;
+    stat.set(s.exercise_id, cur);
+  }
+
+  const out = [];
+  for (const lift of MAIN_LIFTS) {
+    let best = null;
+    for (const ex of exList) {
+      const name = ex.name.toLowerCase();
+      if (!lift.match.some((m) => name.includes(m))) continue;
+      if (lift.exclude.some((x) => name.includes(x))) continue;
+      const st = stat.get(ex.id);
+      if (!st || (st.e1rm == null && st.bestReps == null)) continue;
+      const score = st.e1rm ?? 0;
+      if (!best || score > best.score) best = { name: ex.name, score, ...st };
+    }
+    if (best) {
+      out.push({
+        key: lift.key,
+        label: lift.label,
+        exercise: best.name,
+        e1rm: best.e1rm != null ? Math.round(best.e1rm * 10) / 10 : null,
+        maxWeight: best.maxWeight,
+        bestReps: best.bestReps,
+      });
+    }
+  }
+  return out;
+}
+
 // --- overview stats ----------------------------------------------------------
 
 // Monday-based week key (YYYY-Www-ish: we just use the Monday date string).
