@@ -404,6 +404,7 @@ export async function progress(userId, exerciseId, range = 'all') {
     date: s.date,
     weight: s.topSet ? s.topSet.weight : null,
     reps: s.topSet ? s.topSet.reps : null,
+    maxReps: s.sets?.length ? Math.max(0, ...s.sets.map((x) => x.reps || 0)) || null : null,
     e1rm: s.e1rm != null ? Math.round(s.e1rm * 10) / 10 : null,
     volume: Math.round(s.volume),
   }));

@@ -11,7 +11,8 @@ const RANGES = [
   { key: '1y', label: '1Y' }, { key: 'all', label: 'All' },
 ];
 const METRICS = [
-  { key: 'weight', label: 'Weight' }, { key: 'e1rm', label: 'Est. 1RM' }, { key: 'volume', label: 'Volume' },
+  { key: 'weight', label: 'Weight' }, { key: 'e1rm', label: 'Est. 1RM' },
+  { key: 'volume', label: 'Volume' }, { key: 'maxReps', label: 'Reps' },
 ];
 const ACCENT = '#fc5200';
 const shortDate = (s) => new Date(s + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
@@ -53,6 +54,15 @@ export default function ProgressView({ units, sex, ageBand }) {
     setData(null);
     api.progress(exId, range).then(setData).catch((e) => setError(e.message));
   }, [exId, range]);
+
+  // Bodyweight exercises only have reps, so default the trend metric to Reps.
+  useEffect(() => {
+    if (!exId || !exercises) return;
+    const sel = exercises.find((e) => e.id === exId);
+    if (!sel) return;
+    const repsOnly = (sel.equipment || '').toLowerCase() === 'bodyweight';
+    setMetric((m) => (repsOnly ? 'maxReps' : m === 'maxReps' ? 'e1rm' : m));
+  }, [exId, exercises]);
 
   const metricLabel = METRICS.find((m) => m.key === metric)?.label;
   const series = data?.series || [];
