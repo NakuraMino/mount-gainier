@@ -93,7 +93,7 @@ export default function HistoryView({ units }) {
                         {en.sets.map((s, i) => (
                           <span key={i}>
                             {i > 0 && '   ·   '}
-                            {s.weight ?? '—'}{s.weight != null ? ` ${units}` : ''} × {s.reps ?? '—'}
+                            {s.weight != null ? `${s.weight} ${units} × ${s.reps ?? '—'}` : `${s.reps ?? '—'} reps`}
                           </span>
                         ))}
                       </div>

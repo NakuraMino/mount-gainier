@@ -43,6 +43,7 @@ const EXERCISES = [
   { name: 'Reverse Flies', category: 'back', muscle_group: 'rear-delts', equipment: 'dumbbell' },
   { name: 'Face Pull', category: 'back', muscle_group: 'rear-delts', equipment: 'cable' },
   { name: 'Assisted Pull-Ups', category: 'back', muscle_group: 'lats', equipment: 'machine' },
+  { name: 'Pull-ups', category: 'back', muscle_group: 'lats', equipment: 'bodyweight' }, // reps-only
 ];
 
 async function main() {

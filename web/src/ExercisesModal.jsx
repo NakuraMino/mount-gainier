@@ -39,6 +39,14 @@ function ExerciseForm({ initial, onSave, onCancel, saving }) {
         <input type="checkbox" checked={f.is_unilateral} onChange={(e) => set({ is_unilateral: e.target.checked })} />
         Unilateral (one side at a time)
       </label>
+      <label className="toggle" style={{ marginTop: 10, display: 'flex' }}>
+        <input
+          type="checkbox"
+          checked={(f.equipment || '').toLowerCase() === 'bodyweight'}
+          onChange={(e) => set({ equipment: e.target.checked ? 'bodyweight' : '' })}
+        />
+        Bodyweight — log reps only (no weight)
+      </label>
       <div className="row" style={{ marginTop: 12 }}>
         <button className="btn small" disabled={!f.name.trim() || saving} onClick={() => onSave(f)}>Save</button>
         <button className="btn ghost small" onClick={onCancel}>Cancel</button>

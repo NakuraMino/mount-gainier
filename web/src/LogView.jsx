@@ -19,6 +19,10 @@ const newEntry = () => ({ sets: [EMPTY_SET()], ready_to_progress: false, rpe: ''
 const entryHasContent = (e) =>
   e.sets.some((s) => !isEmptySet(s)) || e.ready_to_progress || String(e.rpe).trim() !== '' || e.note.trim() !== '';
 
+// Bodyweight exercises (e.g. pull-ups) are logged as a single reps count, no weight.
+const isRepsOnly = (ex) => (ex?.equipment || '').toLowerCase() === 'bodyweight';
+const maxReps = (sets) => sets.reduce((m, s) => Math.max(m, Number(s.reps) || 0), 0);
+
 export default function LogView({ units, onSaved }) {
   const [lib, setLib] = useState(null); // all exercises w/ lastTime + suggestion
   const [picked, setPicked] = useState([]); // [exId] in the order added
@@ -76,6 +80,8 @@ export default function LogView({ units, onSaved }) {
       if (!sets.length || !isEmptySet(sets[sets.length - 1])) sets = [...sets, EMPTY_SET()];
       return { ...d, [exId]: { ...d[exId], sets } };
     });
+  const setRepsOnly = (exId, val) =>
+    setDraft((d) => ({ ...d, [exId]: { ...d[exId], sets: [{ weight: '', reps: val }] } }));
   const fillWeight = (exId, w) =>
     setDraft((d) => {
       const sets = d[exId].sets.map((s) => (isEmptySet(s) ? s : s)); // leave filled as-is
@@ -107,9 +113,18 @@ export default function LogView({ units, onSaved }) {
     for (const exId of picked) {
       const e = draft[exId];
       if (!e || !entryHasContent(e)) continue;
-      const sets = e.sets
-        .map((s, i) => ({ set_number: i + 1, weight: s.weight, reps: s.reps }))
-        .filter((s) => String(s.weight).trim() !== '' || String(s.reps).trim() !== '');
+      const ex = exById(exId);
+      // The reps shown as the input placeholder: last time's reps, else the default.
+      const previewReps = ex?.lastTime?.topSet?.reps ?? ex?.default_reps ?? null;
+      const sets = [];
+      e.sets.forEach((s) => {
+        const weightFilled = String(s.weight).trim() !== '';
+        const repsFilled = String(s.reps).trim() !== '';
+        if (!weightFilled && !repsFilled) return; // skip blank rows
+        // A set with a weight but no reps falls back to the previewed rep count.
+        const reps = repsFilled ? s.reps : weightFilled && previewReps != null ? previewReps : s.reps;
+        sets.push({ set_number: sets.length + 1, weight: s.weight, reps });
+      });
       out.push({ exercise_id: exId, sets, ready_to_progress: e.ready_to_progress, rpe: e.rpe === '' ? null : e.rpe, note: e.note });
     }
     return out;
@@ -159,7 +174,9 @@ export default function LogView({ units, onSaved }) {
   const setSummary = (e) => {
     const filled = e.sets.filter((s) => !isEmptySet(s));
     if (!filled.length) return 'no sets yet';
-    return filled.map((s) => `${s.weight || '—'}${s.weight ? ` ${units}` : ''}×${s.reps || '—'}`).join('   ·   ');
+    return filled
+      .map((s) => (String(s.weight).trim() === '' ? `${s.reps || '—'} reps` : `${s.weight} ${units}×${s.reps || '—'}`))
+      .join('   ·   ');
   };
 
   return (
@@ -221,6 +238,7 @@ export default function LogView({ units, onSaved }) {
         const lt = ex.lastTime;
         const sug = ex.suggestion;
         const done = entryHasContent(e);
+        const repsOnly = isRepsOnly(ex);
         return (
           <div className="card" key={exId}>
             <div className="between">
@@ -241,44 +259,67 @@ export default function LogView({ units, onSaved }) {
               <div className="muted" style={{ marginTop: 6, fontSize: 13 }}>{setSummary(e)}</div>
             ) : (
               <>
-                <div className="lasttime" style={{ marginTop: 6 }}>
-                  {lt && lt.topSet ? (
-                    <>Last time: <b>{lt.topSet.weight ?? '—'}{lt.topSet.weight != null ? ` ${units}` : ''} × {lt.topSet.reps ?? '—'}</b>
-                      {lt.e1rm != null && <span className="faint"> · e1RM {Math.round(lt.e1rm)}</span>}
-                    </>
-                  ) : (
-                    <span className="faint">No history yet — first time logging this.</span>
-                  )}
-                </div>
+                {repsOnly ? (
+                  <>
+                    <div className="lasttime" style={{ marginTop: 6 }}>
+                      {lt && lt.sets?.length ? (
+                        <>Last time: <b>{maxReps(lt.sets)} reps</b></>
+                      ) : (
+                        <span className="faint">No history yet — first time logging this.</span>
+                      )}
+                    </div>
+                    <div className="set-row" style={{ gridTemplateColumns: '1fr', marginTop: 10 }}>
+                      <input
+                        type="number" inputMode="numeric"
+                        placeholder={lt && lt.sets?.length ? `${maxReps(lt.sets)} reps` : 'reps'}
+                        value={e.sets[0]?.reps ?? ''} onChange={(ev) => setRepsOnly(exId, ev.target.value)}
+                      />
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="lasttime" style={{ marginTop: 6 }}>
+                      {lt && lt.topSet ? (
+                        <>Last time: <b>{lt.topSet.weight ?? '—'}{lt.topSet.weight != null ? ` ${units}` : ''} × {lt.topSet.reps ?? '—'}</b>
+                          {lt.e1rm != null && <span className="faint"> · e1RM {Math.round(lt.e1rm)}</span>}
+                        </>
+                      ) : (
+                        <span className="faint">No history yet — first time logging this.</span>
+                      )}
+                    </div>
 
-                {sug && (
-                  <div style={{ marginTop: 9 }}>
-                    <button className="chip accent" onClick={() => fillWeight(exId, sug.weight)} title={sug.reason}>
-                      ⬆ Try {sug.weight} {units} — {sug.reason}
-                    </button>
-                  </div>
+                    {sug && (
+                      <div style={{ marginTop: 9 }}>
+                        <button className="chip accent" onClick={() => fillWeight(exId, sug.weight)} title={sug.reason}>
+                          ⬆ Try {sug.weight} {units} — {sug.reason}
+                        </button>
+                      </div>
+                    )}
+
+                    {e.sets.map((s, i) => (
+                      <div className="set-row" key={i}>
+                        <span className="setno">{i + 1}</span>
+                        <input
+                          type="number" inputMode="decimal" placeholder={lt?.topSet?.weight != null ? `${lt.topSet.weight} ${units}` : units}
+                          value={s.weight} onChange={(ev) => patchSet(exId, i, 'weight', ev.target.value)}
+                        />
+                        <input
+                          type="number" inputMode="numeric" placeholder={lt?.topSet?.reps != null ? `${lt.topSet.reps} reps` : `${ex.default_reps} reps`}
+                          value={s.reps} onChange={(ev) => patchSet(exId, i, 'reps', ev.target.value)}
+                        />
+                        <button className="iconbtn" style={{ width: 34, height: 34 }} onClick={() => removeSet(exId, i)} title="Remove set" disabled={e.sets.length <= 1}>×</button>
+                      </div>
+                    ))}
+                  </>
                 )}
 
-                {e.sets.map((s, i) => (
-                  <div className="set-row" key={i}>
-                    <span className="setno">{i + 1}</span>
-                    <input
-                      type="number" inputMode="decimal" placeholder={lt?.topSet?.weight != null ? `${lt.topSet.weight} ${units}` : units}
-                      value={s.weight} onChange={(ev) => patchSet(exId, i, 'weight', ev.target.value)}
-                    />
-                    <input
-                      type="number" inputMode="numeric" placeholder={lt?.topSet?.reps != null ? `${lt.topSet.reps} reps` : `${ex.default_reps} reps`}
-                      value={s.reps} onChange={(ev) => patchSet(exId, i, 'reps', ev.target.value)}
-                    />
-                    <button className="iconbtn" style={{ width: 34, height: 34 }} onClick={() => removeSet(exId, i)} title="Remove set" disabled={e.sets.length <= 1}>×</button>
-                  </div>
-                ))}
-
                 <div className="meta-row">
-                  <label className="toggle">
-                    <input type="checkbox" checked={e.ready_to_progress} onChange={(ev) => patchEntry(exId, { ready_to_progress: ev.target.checked })} />
-                    Ready for more weight?
-                  </label>
+                  {!repsOnly && (
+                    <label className="toggle">
+                      <input type="checkbox" checked={e.ready_to_progress} onChange={(ev) => patchEntry(exId, { ready_to_progress: ev.target.checked })} />
+                      Ready for more weight?
+                    </label>
+                  )}
                   <label className="toggle">
                     Perceived effort (1–10)
                     <input className="rpe-input" type="number" min="1" max="10" step="0.5" value={e.rpe} onChange={(ev) => patchEntry(exId, { rpe: ev.target.value })} />

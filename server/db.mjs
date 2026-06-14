@@ -434,7 +434,7 @@ const MAIN_LIFTS = [
   { key: 'bench', label: 'Bench', match: ['barbell bench', 'bench press'], exclude: [] },
   { key: 'db_press', label: 'DB Press', match: ['dumbbell bench', 'dumbbell press', 'db press', 'db bench', 'arnold'], exclude: [] },
   { key: 'squat', label: 'Squat', match: ['squat'], exclude: [] },
-  { key: 'pullup', label: 'Pull-ups', match: ['pull-up', 'pull up', 'pullup', 'chin-up', 'chin up'], exclude: ['pulldown', 'pull-down', 'pull down'] },
+  { key: 'pullup', label: 'Pull-ups', match: ['pull-up', 'pull up', 'pullup', 'chin-up', 'chin up'], exclude: ['pulldown', 'pull-down', 'pull down', 'assisted'] },
   { key: 'pulldown', label: 'Pulldown', match: ['lat pulldown', 'lat pull', 'pulldown', 'pull-down', 'pull down'], exclude: ['tricep'] },
   { key: 'rdl', label: 'RDL', match: ['romanian', 'rdl'], exclude: [] },
 ];
