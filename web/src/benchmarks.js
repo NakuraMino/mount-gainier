@@ -6,13 +6,16 @@
 // a peak value per sex and scale it by an age factor for the other bands. They're
 // ballpark figures for a fun comparison, not medical/coaching truth.
 
+// Ordered so lifts hitting similar muscles sit next to each other on the radar
+// (the chart and table both follow this order). Grouped push → pull → legs, so
+// each movement pattern forms a contiguous arc instead of being interleaved.
 export const LIFT_DEFS = [
-  { key: 'bench', label: 'Bench', metric: 'e1rm' },
-  { key: 'db_press', label: 'DB Press', metric: 'e1rm' },
-  { key: 'squat', label: 'Squat', metric: 'e1rm' },
-  { key: 'pulldown', label: 'Pulldown', metric: 'e1rm' },
-  { key: 'rdl', label: 'RDL', metric: 'e1rm' },
-  { key: 'pullup', label: 'Pull-ups', metric: 'reps' },
+  { key: 'bench', label: 'Bench', metric: 'e1rm' },      // push (chest/triceps)
+  { key: 'db_press', label: 'DB Press', metric: 'e1rm' }, // push (chest/shoulders)
+  { key: 'pulldown', label: 'Pulldown', metric: 'e1rm' }, // pull (lats/biceps)
+  { key: 'pullup', label: 'Pull-ups', metric: 'reps' },   // pull (lats/biceps)
+  { key: 'squat', label: 'Squat', metric: 'e1rm' },       // legs (quads/glutes)
+  { key: 'rdl', label: 'RDL', metric: 'e1rm' },           // legs (hamstrings/glutes)
 ];
 
 // Peak-age (~25–34) averages. Weights in lb; pull-ups in reps.
