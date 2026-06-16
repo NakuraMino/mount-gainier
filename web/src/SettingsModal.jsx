@@ -1,11 +1,18 @@
 import { useState } from 'react';
 import { api } from './api.js';
-import { AGE_BANDS } from './benchmarks.js';
+import { AGE_BANDS, LB_TO_KG } from './benchmarks.js';
 
-// Preferences only — account, units, your profile (sex + age band, used for the
-// "vs average" radar), data export. The exercise library lives in its own modal.
-export default function SettingsModal({ me, units, onUnits, sex, ageBand, onSex, onAgeBand, onLogout, onClose }) {
+// Preferences only — account, units, your profile (sex + age band + bodyweight,
+// used for the "vs average" radar), data export. The library lives in its own modal.
+export default function SettingsModal({ me, units, onUnits, sex, ageBand, bodyweight, onSex, onAgeBand, onBodyweight, onLogout, onClose }) {
   const [error, setError] = useState('');
+  // Bodyweight is stored canonically in lb; show + edit it in the user's units.
+  const [bw, setBw] = useState(() => (bodyweight ? String(Math.round(units === 'kg' ? bodyweight * LB_TO_KG : bodyweight)) : ''));
+  const onBwChange = (val) => {
+    setBw(val);
+    const n = Number(val);
+    onBodyweight(val.trim() !== '' && Number.isFinite(n) && n > 0 ? (units === 'kg' ? n / LB_TO_KG : n) : 0);
+  };
 
   const exportCsv = async () => {
     try {
@@ -50,7 +57,11 @@ export default function SettingsModal({ me, units, onUnits, sex, ageBand, onSex,
               {AGE_BANDS.map((b) => <option key={b} value={b}>{b}</option>)}
             </select>
           </div>
-          <div className="faint" style={{ fontSize: 11, marginTop: 10 }}>Used to compare your lifts to population averages on the Progress tab.</div>
+          <div className="between" style={{ marginTop: 12 }}>
+            <span className="muted" style={{ fontSize: 14 }}>Bodyweight ({units})</span>
+            <input type="number" inputMode="decimal" placeholder="optional" value={bw} onChange={(e) => onBwChange(e.target.value)} style={{ width: 90 }} />
+          </div>
+          <div className="faint" style={{ fontSize: 11, marginTop: 10 }}>Used to compare your lifts to population averages on the Progress tab. Strength averages scale with bodyweight, so enter yours for a fairer comparison.</div>
         </div>
 
         {/* preferences */}

@@ -7,7 +7,7 @@ const fmtDate = (s) => {
   return d.toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric', year: 'numeric' });
 };
 
-export default function HistoryView({ units }) {
+export default function HistoryView({ units, onEdit }) {
   const [workouts, setWorkouts] = useState(null);
   const [error, setError] = useState('');
   const [openId, setOpenId] = useState(null);
@@ -56,7 +56,10 @@ export default function HistoryView({ units }) {
               </div>
               <div className="act-date">{fmtDate(w.date)}</div>
             </div>
-            <button className="btn danger small" onClick={(e) => remove(w.id, e)}>Delete</button>
+            <div className="row" style={{ gap: 6 }} onClick={(e) => e.stopPropagation()}>
+              <button className="btn ghost small" onClick={() => onEdit?.(w.id)}>Edit</button>
+              <button className="btn danger small" onClick={(e) => remove(w.id, e)}>Delete</button>
+            </div>
           </div>
 
           <div className="act-stats">

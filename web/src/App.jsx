@@ -12,6 +12,7 @@ const LS_TAB = 'gymtracker.tab';
 const LS_THEME = 'gymtracker.theme';
 const LS_SEX = 'gymtracker.sex';
 const LS_AGE = 'gymtracker.ageband';
+const LS_BW = 'gymtracker.bodyweight'; // canonical lb; 0 = unset
 
 const TABS = [
   { key: 'log', label: 'Log', ico: '➕' },
@@ -24,12 +25,15 @@ export default function App() {
   const [me, setMe] = useState(null);
   const [prefs, setPrefs] = useState({ units: 'lb' });
   const [tab, setTab] = useState(localStorage.getItem(LS_TAB) || 'log');
+  const [editId, setEditId] = useState(null); // workout being edited in the Log tab, else null
   const [showExercises, setShowExercises] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [sex, setSex] = useState(localStorage.getItem(LS_SEX) || 'male');
   const [ageBand, setAgeBand] = useState(localStorage.getItem(LS_AGE) || '25-34');
+  const [bodyweight, setBodyweight] = useState(() => Number(localStorage.getItem(LS_BW)) || 0); // lb
   useEffect(() => localStorage.setItem(LS_SEX, sex), [sex]);
   useEffect(() => localStorage.setItem(LS_AGE, ageBand), [ageBand]);
+  useEffect(() => localStorage.setItem(LS_BW, String(bodyweight || 0)), [bodyweight]);
 
   const [theme, setTheme] = useState(() => document.documentElement.getAttribute('data-theme') || 'dark');
   useEffect(() => {
@@ -83,6 +87,11 @@ export default function App() {
 
   const units = prefs.units || 'lb';
 
+  // Open a saved workout for editing in the Log tab.
+  const startEdit = (id) => { setEditId(id); setTab('log'); };
+  // Leaving the Log tab (or finishing) drops any edit session back to a fresh log.
+  const goTab = (key) => { setEditId(null); setTab(key); };
+
   return (
     <div className="app">
       <header className="topbar">
@@ -102,14 +111,22 @@ export default function App() {
       </header>
 
       <main className="content">
-        {tab === 'log' && <LogView units={units} onSaved={() => setTab('history')} />}
-        {tab === 'history' && <HistoryView units={units} />}
-        {tab === 'progress' && <ProgressView units={units} sex={sex} ageBand={ageBand} />}
+        {tab === 'log' && (
+          <LogView
+            key={editId || 'new'}
+            editId={editId}
+            units={units}
+            onSaved={() => goTab('history')}
+            onCancelEdit={() => goTab('history')}
+          />
+        )}
+        {tab === 'history' && <HistoryView units={units} onEdit={startEdit} />}
+        {tab === 'progress' && <ProgressView units={units} sex={sex} ageBand={ageBand} bodyweight={bodyweight} />}
       </main>
 
       <nav className="tabbar">
         {TABS.map((t) => (
-          <button key={t.key} className={tab === t.key ? 'active' : ''} onClick={() => setTab(t.key)}>
+          <button key={t.key} className={tab === t.key ? 'active' : ''} onClick={() => goTab(t.key)}>
             <span className="ico">{t.ico}</span>
             {t.label}
           </button>
@@ -125,8 +142,10 @@ export default function App() {
           onUnits={(u) => api.setPrefs({ units: u }).then(() => refreshPrefs())}
           sex={sex}
           ageBand={ageBand}
+          bodyweight={bodyweight}
           onSex={setSex}
           onAgeBand={setAgeBand}
+          onBodyweight={setBodyweight}
           onLogout={logout}
           onClose={() => setShowSettings(false)}
         />

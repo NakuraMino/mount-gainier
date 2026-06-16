@@ -30,7 +30,7 @@ function RadarTip({ active, payload }) {
   );
 }
 
-export default function ProgressView({ units, sex, ageBand }) {
+export default function ProgressView({ units, sex, ageBand, bodyweight }) {
   const [stats, setStats] = useState(null);
   const [exercises, setExercises] = useState(null);
   const [exId, setExId] = useState('');
@@ -68,8 +68,8 @@ export default function ProgressView({ units, sex, ageBand }) {
   const series = data?.series || [];
   const hasData = series.some((p) => p[metric] != null);
 
-  // --- radar: you vs average for the chosen group ---
-  const avg = benchmarks(sex, ageBand, units);
+  // --- radar: you vs average for the chosen group (scaled to bodyweight) ---
+  const avg = benchmarks(sex, ageBand, units, bodyweight);
   const mainByKey = Object.fromEntries((main || []).map((l) => [l.key, l]));
   const radarData = LIFT_DEFS.map((def) => {
     const u = mainByKey[def.key];
@@ -133,7 +133,10 @@ export default function ProgressView({ units, sex, ageBand }) {
           ))}
         </div>
         <div className="faint" style={{ fontSize: 11, marginTop: 8 }}>
-          Approximate averages for a trained adult; pull-ups compared by reps. “DB Press” assumes a dumbbell bench press.
+          {bodyweight > 0
+            ? `Averages scaled to ${Math.round(units === 'kg' ? bodyweight * 0.453592 : bodyweight)} ${units} bodyweight`
+            : 'Set your bodyweight in Settings to scale these averages to you'}
+          ; pull-ups compared by reps. “DB Press” assumes a dumbbell bench press.
         </div>
       </div>
 

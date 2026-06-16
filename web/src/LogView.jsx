@@ -23,19 +23,39 @@ const entryHasContent = (e) =>
 const isRepsOnly = (ex) => (ex?.equipment || '').toLowerCase() === 'bodyweight';
 const maxReps = (sets) => sets.reduce((m, s) => Math.max(m, Number(s.reps) || 0), 0);
 
-export default function LogView({ units, onSaved }) {
+// In-progress workouts are mirrored on-device so leaving the Log tab never loses
+// work — and never writes to History. Only "Finish workout" hits the server.
+const DRAFT_KEY = 'gymtracker.logdraft';
+const loadDraft = () => {
+  try { return JSON.parse(localStorage.getItem(DRAFT_KEY) || 'null'); } catch { return null; }
+};
+const clearDraft = () => { try { localStorage.removeItem(DRAFT_KEY); } catch {} };
+
+// Convert a saved workout's entry (server shape) into an editable draft entry.
+const entryToDraft = (en) => {
+  let sets = (en.sets || []).map((s) => ({
+    weight: s.weight == null ? '' : String(s.weight),
+    reps: s.reps == null ? '' : String(s.reps),
+  }));
+  if (!sets.length || !isEmptySet(sets[sets.length - 1])) sets = [...sets, EMPTY_SET()];
+  return { sets, ready_to_progress: !!en.ready_to_progress, rpe: en.rpe == null ? '' : String(en.rpe), note: en.note || '' };
+};
+
+export default function LogView({ units, editId, onSaved, onCancelEdit }) {
+  const editing = !!editId;
+  const [restored] = useState(() => (editing ? null : loadDraft())); // one-time read of the saved draft
   const [lib, setLib] = useState(null); // all exercises w/ lastTime + suggestion
-  const [picked, setPicked] = useState([]); // [exId] in the order added
-  const [draft, setDraft] = useState({}); // exId -> entry
-  const [collapsed, setCollapsed] = useState({}); // exId -> bool
-  const [date, setDate] = useState(todayStr());
-  const [cardio, setCardio] = useState('');
-  const [notes, setNotes] = useState('');
+  const [picked, setPicked] = useState(restored?.picked || []); // [exId] in the order added
+  const [draft, setDraft] = useState(restored?.draft || {}); // exId -> entry
+  const [collapsed, setCollapsed] = useState(restored?.collapsed || {}); // exId -> bool
+  const [date, setDate] = useState(restored?.date || todayStr());
+  const [cardio, setCardio] = useState(restored?.cardio || '');
+  const [notes, setNotes] = useState(restored?.notes || '');
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState('');
   const [newCat, setNewCat] = useState('upper');
-  const [workoutId, setWorkoutId] = useState(null); // set after the first save (progressive)
-  const [savingEx, setSavingEx] = useState(null);
+  const [workoutId, setWorkoutId] = useState(editing ? editId : null); // create on finish; update when editing
+  const [loadingEdit, setLoadingEdit] = useState(editing);
   const [finishing, setFinishing] = useState(false);
   const [error, setError] = useState('');
 
@@ -44,6 +64,42 @@ export default function LogView({ units, onSaved }) {
     [],
   );
   useEffect(() => { loadLib(); }, [loadLib]);
+
+  // Edit mode: pull the saved workout and hydrate the form from it.
+  useEffect(() => {
+    if (!editing) return;
+    let alive = true;
+    api.workout(editId)
+      .then((r) => {
+        if (!alive || !r?.workout) return;
+        const w = r.workout;
+        const nextPicked = [];
+        const nextDraft = {};
+        const nextCollapsed = {};
+        for (const en of w.entries || []) {
+          nextPicked.push(en.exercise_id);
+          nextDraft[en.exercise_id] = entryToDraft(en);
+          nextCollapsed[en.exercise_id] = true; // collapsed overview; tap to expand & fix
+        }
+        setPicked(nextPicked);
+        setDraft(nextDraft);
+        setCollapsed(nextCollapsed);
+        setDate(w.date || todayStr());
+        setCardio(w.cardio_note || '');
+        setNotes(w.notes || '');
+      })
+      .catch((e) => { if (alive) setError(e.message); })
+      .finally(() => { if (alive) setLoadingEdit(false); });
+    return () => { alive = false; };
+  }, [editing, editId]);
+
+  // New workout: mirror the in-progress draft to localStorage so leaving the tab
+  // (or closing the app) never loses it — and never writes it to History.
+  useEffect(() => {
+    if (editing) return;
+    if (!picked.length) { clearDraft(); return; }
+    try { localStorage.setItem(DRAFT_KEY, JSON.stringify({ picked, draft, collapsed, date, cardio, notes })); } catch {}
+  }, [editing, picked, draft, collapsed, date, cardio, notes]);
 
   const exById = (id) => (lib || []).find((e) => e.id === id);
 
@@ -145,30 +201,30 @@ export default function LogView({ units, onSaved }) {
     }
   };
 
-  const saveExercise = async (exId) => {
-    if (!entryHasContent(draft[exId])) { setError('Add a set before saving this exercise.'); return; }
-    setSavingEx(exId);
-    setError('');
-    try {
-      await persist();
-      setCollapsed((c) => ({ ...c, [exId]: true }));
-    } catch (e) {
-      setError(e.message);
-    } finally {
-      setSavingEx(null);
-    }
-  };
+  // Marks an exercise done and folds it up. Purely local — nothing is written to
+  // the server until "Finish workout".
+  const collapseExercise = (exId) => setCollapsed((c) => ({ ...c, [exId]: true }));
 
   const finish = async () => {
     setFinishing(true);
     setError('');
     try {
       await persist();
+      if (!editing) clearDraft();
       onSaved?.();
     } catch (e) {
       setError(e.message);
       setFinishing(false);
     }
+  };
+
+  // Throw away the in-progress workout (new) or back out of an edit (existing).
+  const discard = () => {
+    if (editing) { onCancelEdit?.(); return; }
+    if (picked.length && !confirm('Discard this in-progress workout?')) return;
+    clearDraft();
+    setPicked([]); setDraft({}); setCollapsed({});
+    setDate(todayStr()); setCardio(''); setNotes(''); setError('');
   };
 
   const setSummary = (e) => {
@@ -179,12 +235,21 @@ export default function LogView({ units, onSaved }) {
       .join('   ·   ');
   };
 
+  if (editing && loadingEdit) return <div className="spinner">Loading…</div>;
+
   return (
     <div>
       <div className="between">
-        <h1 style={{ marginBottom: 0 }}>Log a workout</h1>
+        <h1 style={{ marginBottom: 0 }}>{editing ? 'Edit workout' : 'Log a workout'}</h1>
         <input type="date" value={date} onChange={(e) => setDate(e.target.value)} style={{ width: 'auto' }} />
       </div>
+
+      {editing && (
+        <div className="banner ok" style={{ marginTop: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
+          <span>Editing a saved workout</span>
+          <button className="btn ghost small" onClick={() => onCancelEdit?.()}>Cancel</button>
+        </div>
+      )}
 
       {/* grouped exercise picker */}
       <div style={{ marginTop: 16 }}>
@@ -327,8 +392,8 @@ export default function LogView({ units, onSaved }) {
                 </div>
                 <input style={{ marginTop: 10 }} type="text" placeholder="Note (optional)" value={e.note} onChange={(ev) => patchEntry(exId, { note: ev.target.value })} />
 
-                <button className="btn small block" style={{ marginTop: 14 }} onClick={() => saveExercise(exId)} disabled={savingEx === exId}>
-                  {savingEx === exId ? 'Saving…' : 'Save exercise'}
+                <button className="btn small block" style={{ marginTop: 14 }} onClick={() => collapseExercise(exId)}>
+                  Done
                 </button>
               </>
             )}
@@ -346,7 +411,10 @@ export default function LogView({ units, onSaved }) {
           </div>
 
           <button className="btn block" style={{ marginTop: 16 }} onClick={finish} disabled={finishing}>
-            {finishing ? 'Saving…' : 'Finish workout'}
+            {finishing ? 'Saving…' : editing ? 'Save changes' : 'Finish workout'}
+          </button>
+          <button className="btn ghost block" style={{ marginTop: 10 }} onClick={discard} disabled={finishing}>
+            {editing ? 'Cancel' : 'Discard workout'}
           </button>
         </>
       )}
