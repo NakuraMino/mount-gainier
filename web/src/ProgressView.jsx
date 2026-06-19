@@ -184,7 +184,7 @@ export default function ProgressView({ units, sex, ageBand, bodyweight }) {
                       labelFormatter={(d) => shortDate(d)}
                       formatter={(v) => [metric === 'weight' ? `${v} ${units}` : v, metricLabel]}
                     />
-                    <Area type="monotone" dataKey={metric} stroke={ACCENT} strokeWidth={2.5} fill="url(#fillAccent)" dot={{ r: 2.5, fill: ACCENT }} activeDot={{ r: 5 }} connectNulls />
+                    <Area type="linear" dataKey={metric} stroke={ACCENT} strokeWidth={2.5} fill="url(#fillAccent)" dot={{ r: 2.5, fill: ACCENT }} activeDot={{ r: 5 }} connectNulls />
                     {series.length > 6 && <Brush dataKey="date" height={22} stroke={ACCENT} tickFormatter={shortDate} travellerWidth={8} />}
                   </AreaChart>
                 </ResponsiveContainer>
