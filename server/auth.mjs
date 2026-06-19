@@ -6,12 +6,43 @@
 // Supabase Auth is email-based, but the user wants a username/password feel, so
 // each username maps to a fixed synthetic email (e.g. mino -> mino@gymtracker.local).
 // The real username lives in the `profiles` table.
+import { createRemoteJWKSet, jwtVerify } from 'jose';
 import { supabase } from './supabase.mjs';
 
 const EMAIL_DOMAIN = process.env.AUTH_EMAIL_DOMAIN || 'gymtracker.local';
 
 export const usernameToEmail = (username) => `${normUser(username)}@${EMAIL_DOMAIN}`;
 export const normUser = (username) => String(username || '').trim().toLowerCase();
+
+// Supabase access tokens are JWTs signed with the project's asymmetric key
+// (ES256). We verify them locally against the project's public JWKS instead of
+// calling supabase.auth.getUser(token) on every request — that's a network
+// round-trip to Supabase Auth on the hot path of every API call. createRemoteJWKSet
+// fetches the key set once, caches it in memory, and refetches automatically when
+// the signing key rotates. Trade-off: a token is trusted until it expires (≤1h),
+// so a server-side revocation isn't reflected until then — fine for this private,
+// admin-provisioned app with no "sign out everywhere" flow.
+const SUPABASE_URL = (process.env.SUPABASE_URL || '').replace(/\/+$/, '');
+const ISSUER = `${SUPABASE_URL}/auth/v1`;
+const JWKS = SUPABASE_URL ? createRemoteJWKSet(new URL(`${ISSUER}/.well-known/jwks.json`)) : null;
+
+// The profile (username / is_admin) rarely changes, so cache it briefly per user
+// rather than querying Postgres on every request. Short TTL keeps is_admin
+// reasonably fresh — it gates the admin-only route.
+const PROFILE_TTL_MS = 60_000;
+const profileCache = new Map(); // userId -> { value, expires }
+
+async function getProfile(userId) {
+  const hit = profileCache.get(userId);
+  if (hit && hit.expires > Date.now()) return hit.value;
+  const { data } = await supabase
+    .from('profiles')
+    .select('username, is_admin')
+    .eq('id', userId)
+    .maybeSingle();
+  profileCache.set(userId, { value: data || null, expires: Date.now() + PROFILE_TTL_MS });
+  return data || null;
+}
 
 // Express middleware: require a valid Supabase access token. On success sets
 // req.userId / req.username / req.isAdmin; otherwise 401.
@@ -20,18 +51,24 @@ export async function requireAuth(req, res, next) {
     const header = req.get('authorization') || '';
     const token = header.startsWith('Bearer ') ? header.slice(7).trim() : '';
     if (!token) return res.status(401).json({ error: 'not signed in' });
+    if (!JWKS) return res.status(500).json({ error: 'auth not configured (SUPABASE_URL missing)' });
 
-    const { data, error } = await supabase.auth.getUser(token);
-    if (error || !data?.user) return res.status(401).json({ error: 'invalid or expired session' });
+    let payload;
+    try {
+      ({ payload } = await jwtVerify(token, JWKS, {
+        issuer: ISSUER,
+        audience: 'authenticated',
+        algorithms: ['ES256'],
+      }));
+    } catch {
+      return res.status(401).json({ error: 'invalid or expired session' });
+    }
+    const userId = payload.sub;
+    if (!userId) return res.status(401).json({ error: 'invalid or expired session' });
 
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('username, is_admin')
-      .eq('id', data.user.id)
-      .maybeSingle();
-
-    req.userId = data.user.id;
-    req.username = profile?.username || data.user.email || '';
+    const profile = await getProfile(userId);
+    req.userId = userId;
+    req.username = profile?.username || payload.email || '';
     req.isAdmin = !!profile?.is_admin;
     next();
   } catch (err) {

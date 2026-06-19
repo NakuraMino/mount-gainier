@@ -1,5 +1,6 @@
 import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
+import { VitePWA } from 'vite-plugin-pwa';
 import { resolve } from 'node:path';
 
 // The web app needs the Supabase URL + anon key at build time. We keep a single
@@ -12,7 +13,29 @@ export default defineConfig(({ mode }) => {
   const SUPABASE_ANON_KEY = process.env.VITE_SUPABASE_ANON_KEY || rootEnv.VITE_SUPABASE_ANON_KEY || '';
 
   return {
-    plugins: [react()],
+    plugins: [
+      react(),
+      VitePWA({
+        // A new deploy's service worker activates and takes over on the next load,
+        // so the installed app never gets stuck on a stale build.
+        registerType: 'autoUpdate',
+        // We already ship public/manifest.webmanifest (linked from index.html), so
+        // don't let the plugin generate/inject a second one.
+        manifest: false,
+        workbox: {
+          // Precache only the app shell — JS/CSS/HTML/SVG. Deliberately excludes the
+          // large PNG app icons (and the unused app_icon_old.png) from the precache.
+          globPatterns: ['**/*.{js,css,html,svg}'],
+          // Offline SPA navigation falls back to index.html, but never for /api/* —
+          // those must hit the network (dynamic, per-user data).
+          navigateFallback: '/index.html',
+          navigateFallbackDenylist: [/^\/api\//],
+          runtimeCaching: [
+            { urlPattern: ({ url }) => url.pathname.startsWith('/api/'), handler: 'NetworkOnly' },
+          ],
+        },
+      }),
+    ],
     define: {
       'import.meta.env.VITE_SUPABASE_URL': JSON.stringify(SUPABASE_URL),
       'import.meta.env.VITE_SUPABASE_ANON_KEY': JSON.stringify(SUPABASE_ANON_KEY),

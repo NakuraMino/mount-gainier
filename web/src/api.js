@@ -5,10 +5,25 @@ import { supabase } from './supabaseClient.js';
 let onUnauthorized = () => {};
 export const setUnauthorizedHandler = (fn) => { onUnauthorized = fn; };
 
+// Cache the access token instead of calling supabase.auth.getSession() on every
+// request — getSession() takes an internal Web Lock, which serializes the burst of
+// requests we fire on startup. onAuthStateChange keeps the cache fresh (login,
+// logout, and the ~hourly TOKEN_REFRESHED). We still fall back to getSession()
+// when the cache is empty or within 60s of expiry, so the token never goes stale
+// on the wire (getSession refreshes it when needed).
+let cached = null; // { token, expiresAt } | null  (expiresAt = epoch seconds)
+supabase.auth.onAuthStateChange((_event, session) => {
+  cached = session ? { token: session.access_token, expiresAt: session.expires_at } : null;
+});
+
 async function authHeader() {
-  const { data } = await supabase.auth.getSession();
-  const token = data?.session?.access_token;
-  return token ? { Authorization: `Bearer ${token}` } : {};
+  const now = Math.floor(Date.now() / 1000);
+  if (!cached?.token || (cached.expiresAt && cached.expiresAt - now < 60)) {
+    const { data } = await supabase.auth.getSession();
+    const s = data?.session;
+    cached = s ? { token: s.access_token, expiresAt: s.expires_at } : null;
+  }
+  return cached?.token ? { Authorization: `Bearer ${cached.token}` } : {};
 }
 
 async function j(url, opts = {}) {

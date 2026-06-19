@@ -1,12 +1,15 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, lazy, Suspense } from 'react';
 import { supabase, supabaseConfigured } from './supabaseClient.js';
 import { api, setUnauthorizedHandler } from './api.js';
 import LoginView from './LoginView.jsx';
 import LogView from './LogView.jsx';
 import HistoryView from './HistoryView.jsx';
-import ProgressView from './ProgressView.jsx';
 import ExercisesModal from './ExercisesModal.jsx';
 import SettingsModal from './SettingsModal.jsx';
+
+// The Progress tab pulls in recharts (the bulk of the JS bundle) but isn't the
+// default view, so load it on demand to shrink the initial download.
+const ProgressView = lazy(() => import('./ProgressView.jsx'));
 
 const LS_TAB = 'gymtracker.tab';
 const LS_THEME = 'gymtracker.theme';
@@ -121,7 +124,11 @@ export default function App() {
           />
         )}
         {tab === 'history' && <HistoryView units={units} onEdit={startEdit} />}
-        {tab === 'progress' && <ProgressView units={units} sex={sex} ageBand={ageBand} bodyweight={bodyweight} />}
+        {tab === 'progress' && (
+          <Suspense fallback={<div className="spinner">Loading…</div>}>
+            <ProgressView units={units} sex={sex} ageBand={ageBand} bodyweight={bodyweight} />
+          </Suspense>
+        )}
       </main>
 
       <nav className="tabbar">
