@@ -360,8 +360,44 @@ export async function deleteWorkout(userId, id) {
 }
 
 // History list: each session with a light summary (exercises, sets, volume).
-export async function listSessions(userId, { limit } = {}) {
-  const { workouts, sets } = await loadHistory(userId);
+// Workout feed, newest first — paginated at the DB so we only ever load the page
+// we return (plus its sets), never the whole history. `total` is the all-time count
+// so the client knows whether more remain. `since` returns workouts on/after that
+// date (History's initial window); `offset`/`limit` page through older ones.
+export async function listSessions(userId, { since, limit, offset = 0 } = {}) {
+  // All-time count — cheap head request, transfers no rows.
+  const { count, error: cErr } = await supabase
+    .from('workouts')
+    .select('*', { count: 'exact', head: true })
+    .eq('user_id', userId);
+  if (cErr) throw new Error(cErr.message);
+  const total = count || 0;
+
+  // The page of workouts, filtered/sliced in the DB (uses idx_workouts_user_date).
+  let q = supabase
+    .from('workouts')
+    .select('*')
+    .eq('user_id', userId)
+    .order('date', { ascending: false })
+    .order('created_at', { ascending: false });
+  if (since) q = q.gte('date', since);
+  if (limit != null) q = q.range(offset, offset + limit - 1); // inclusive range
+  const { data: workouts, error } = await q;
+  if (error) throw new Error(error.message);
+
+  // Sets for just this page (uses idx_sets_workout). Exercise count, set count and
+  // volume all derive from sets, so we don't load workout_exercises meta here.
+  const ids = (workouts || []).map((w) => w.id);
+  let sets = [];
+  if (ids.length) {
+    const { data, error: sErr } = await supabase
+      .from('sets')
+      .select('workout_id, exercise_id, weight, reps')
+      .in('workout_id', ids);
+    if (sErr) throw new Error(sErr.message);
+    sets = data || [];
+  }
+
   const byWorkout = new Map();
   for (const s of sets) {
     if (!byWorkout.has(s.workout_id)) byWorkout.set(s.workout_id, { exercises: new Set(), setCount: 0, volume: 0 });
@@ -370,14 +406,26 @@ export async function listSessions(userId, { limit } = {}) {
     agg.setCount += 1;
     agg.volume += (s.weight || 0) * (s.reps || 0);
   }
-  const rows = workouts.map((w) => {
+  const rows = (workouts || []).map((w) => {
     const agg = byWorkout.get(w.id) || { exercises: new Set(), setCount: 0, volume: 0 };
     return {
       ...w,
       summary: { exerciseCount: agg.exercises.size, setCount: agg.setCount, volume: Math.round(agg.volume) },
     };
   });
-  return limit ? rows.slice(0, limit) : rows;
+  return { workouts: rows, total };
+}
+
+// Lightweight feed for the Progress calendar: only the date + category of every
+// workout, no sets loaded. Uses idx_workouts_user_date.
+export async function workoutDays(userId) {
+  const { data, error } = await supabase
+    .from('workouts')
+    .select('date, category')
+    .eq('user_id', userId)
+    .order('date', { ascending: false });
+  if (error) throw new Error(error.message);
+  return data || [];
 }
 
 // --- progress / charts -------------------------------------------------------

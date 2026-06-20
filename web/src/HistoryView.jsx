@@ -7,16 +7,35 @@ const fmtDate = (s) => {
   return d.toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric', year: 'numeric' });
 };
 
+const PAGE = 10; // older workouts fetched per "Load more"
+// Local YYYY-MM-DD for the "last 7 days" window (not toISOString, which is UTC).
+const ymd = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
 export default function HistoryView({ units, onEdit }) {
   const [workouts, setWorkouts] = useState(null);
+  const [total, setTotal] = useState(0);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState('');
   const [openId, setOpenId] = useState(null);
   const [detail, setDetail] = useState(null);
   const [detailLoading, setDetailLoading] = useState(false);
 
-  const load = () =>
-    api.workouts().then((r) => setWorkouts(r.workouts)).catch((e) => setError(e.message));
-  useEffect(() => { load(); }, []);
+  // Start with just the last 7 days; older workouts load on demand.
+  useEffect(() => {
+    const since = new Date();
+    since.setDate(since.getDate() - 7);
+    api.workouts({ since: ymd(since) })
+      .then((r) => { setWorkouts(r.workouts); setTotal(r.total); })
+      .catch((e) => setError(e.message));
+  }, []);
+
+  const loadMore = () => {
+    setLoadingMore(true);
+    api.workouts({ offset: workouts.length, limit: PAGE })
+      .then((r) => { setWorkouts((cur) => [...cur, ...r.workouts]); setTotal(r.total); })
+      .catch((e) => setError(e.message))
+      .finally(() => setLoadingMore(false));
+  };
 
   const toggle = (id) => {
     if (openId === id) { setOpenId(null); setDetail(null); return; }
@@ -32,7 +51,8 @@ export default function HistoryView({ units, onEdit }) {
     try {
       await api.deleteWorkout(id);
       if (openId === id) { setOpenId(null); setDetail(null); }
-      load();
+      setWorkouts((cur) => cur.filter((w) => w.id !== id));
+      setTotal((t) => Math.max(0, t - 1));
     } catch (err) {
       setError(err.message);
     }
@@ -44,7 +64,8 @@ export default function HistoryView({ units, onEdit }) {
   return (
     <div>
       <h1>History</h1>
-      {!workouts.length && <div className="empty">No workouts yet. Head to the <b>Log</b> tab to record your first one.</div>}
+      {!workouts.length && total === 0 && <div className="empty">No workouts yet. Head to the <b>Log</b> tab to record your first one.</div>}
+      {!workouts.length && total > 0 && <div className="empty">No workouts in the last 7 days.</div>}
 
       {workouts.map((w) => (
         <div className="card session" key={w.id} onClick={() => toggle(w.id)} style={{ cursor: 'pointer' }}>
@@ -121,6 +142,12 @@ export default function HistoryView({ units, onEdit }) {
           )}
         </div>
       ))}
+
+      {workouts.length < total && (
+        <button className="btn ghost" style={{ width: '100%', marginTop: 12 }} onClick={loadMore} disabled={loadingMore}>
+          {loadingMore ? 'Loading…' : workouts.length ? `Load more (${total - workouts.length})` : `Show earlier workouts (${total})`}
+        </button>
+      )}
     </div>
   );
 }

@@ -58,7 +58,17 @@ export const api = {
   deleteExercise: (id) => del(`/api/exercises/${id}`),
   exerciseHistory: (id) => j(`/api/exercises/${id}/history`),
 
-  workouts: (limit) => j(`/api/workouts${limit ? `?limit=${limit}` : ''}`),
+  // opts: { since: 'YYYY-MM-DD', offset, limit }. Returns { workouts, total }.
+  workouts: (opts = {}) => {
+    const qs = new URLSearchParams();
+    if (opts.since) qs.set('since', opts.since);
+    if (opts.offset != null) qs.set('offset', opts.offset);
+    if (opts.limit != null) qs.set('limit', opts.limit);
+    const q = qs.toString();
+    return j(`/api/workouts${q ? `?${q}` : ''}`);
+  },
+  // Lightweight calendar feed: { days: [{ date, category }] }, no sets loaded.
+  workoutDays: () => j('/api/workout-days'),
   workout: (id) => j(`/api/workouts/${id}`),
   createWorkout: (b) => post('/api/workouts', b),
   updateWorkout: (id, b) => put(`/api/workouts/${id}`, b),

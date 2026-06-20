@@ -13,7 +13,7 @@ import { existsSync } from 'node:fs';
 import { requireAuth, requireAdmin, createAccount } from './auth.mjs';
 import {
   listExercises, addExercise, updateExercise, deleteExercise, categoryCounts,
-  logScreen, listSessions, createSession, updateSession, getWorkout, deleteWorkout,
+  logScreen, listSessions, workoutDays, createSession, updateSession, getWorkout, deleteWorkout,
   exerciseHistory, progress, stats, getPrefs, setPrefs, exportRows, mainLifts,
 } from './db.mjs';
 
@@ -74,8 +74,16 @@ api.get('/log', wrap(async (req, res) => {
 
 // --- workouts (sessions) -----------------------------------------------------
 api.get('/workouts', wrap(async (req, res) => {
-  const limit = parseInt(req.query.limit, 10);
-  res.json({ workouts: await listSessions(req.userId, { limit: Number.isFinite(limit) ? limit : undefined }) });
+  const num = (v) => { const n = parseInt(v, 10); return Number.isFinite(n) ? n : undefined; };
+  res.json(await listSessions(req.userId, {
+    since: req.query.since || undefined,
+    limit: num(req.query.limit),
+    offset: num(req.query.offset),
+  }));
+}));
+// Lightweight: date + category of every workout, for the Progress calendar.
+api.get('/workout-days', wrap(async (req, res) => {
+  res.json({ days: await workoutDays(req.userId) });
 }));
 api.post('/workouts', wrap(async (req, res) => {
   res.json({ workout: await createSession(req.userId, req.body || {}) });

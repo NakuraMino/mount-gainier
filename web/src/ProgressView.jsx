@@ -5,6 +5,7 @@ import {
 } from 'recharts';
 import { api } from './api.js';
 import { LIFT_DEFS, benchmarks } from './benchmarks.js';
+import { CAT_META, catColor, catLabel } from './categories.js';
 
 const RANGES = [
   { key: '1m', label: '1M' }, { key: '3m', label: '3M' }, { key: '6m', label: '6M' },
@@ -16,6 +17,94 @@ const METRICS = [
 ];
 const ACCENT = '#fc5200';
 const shortDate = (s) => new Date(s + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+
+const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+const DOW = ['M', 'T', 'W', 'T', 'F', 'S', 'S']; // week starts Monday, matching the streak logic
+// Local YYYY-MM-DD (not toISOString, which is UTC and can land on the wrong day).
+const ymd = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+// Fill for a day cell: the category color, or — if you trained more than one
+// category that day — an even conic-gradient split between their colors.
+function dayBg(cats) {
+  if (cats.length === 1) return catColor(cats[0]);
+  const seg = cats.map((c, i) => `${catColor(c)} ${(i / cats.length) * 100}% ${((i + 1) / cats.length) * 100}%`).join(', ');
+  return `conic-gradient(${seg})`;
+}
+
+// A month grid of the days you trained, colored by workout category (no extra API).
+function WorkoutCalendar() {
+  const [days, setDays] = useState(null); // Map<'YYYY-MM-DD', category[]> (distinct, in order)
+  const [view, setView] = useState(() => { const d = new Date(); return { y: d.getFullYear(), m: d.getMonth() }; });
+  const todayStr = ymd(new Date());
+
+  useEffect(() => {
+    api.workoutDays()
+      .then((r) => {
+        const map = new Map();
+        for (const w of r.days) {
+          const cats = map.get(w.date) || [];
+          if (!cats.includes(w.category)) cats.push(w.category);
+          map.set(w.date, cats);
+        }
+        setDays(map);
+      })
+      .catch(() => setDays(new Map()));
+  }, []);
+
+  const { y, m } = view;
+  const offset = (new Date(y, m, 1).getDay() + 6) % 7; // blanks before day 1 (Mon-start)
+  const total = new Date(y, m + 1, 0).getDate();
+  const cells = [...Array(offset).fill(null), ...Array.from({ length: total }, (_, i) => i + 1)];
+
+  const now = new Date();
+  const isCurrentMonth = now.getFullYear() === y && now.getMonth() === m;
+  const monthPrefix = `${y}-${String(m + 1).padStart(2, '0')}-`;
+  const monthCount = days ? [...days.keys()].filter((k) => k.startsWith(monthPrefix)).length : 0;
+
+  // Legend: only categories that actually appear, in the canonical order.
+  const present = days ? [...new Set([...days.values()].flat())] : [];
+  const order = Object.keys(CAT_META);
+  const legend = [...order.filter((k) => present.includes(k)), ...present.filter((k) => !order.includes(k))];
+
+  const shift = (delta) => setView(({ y, m }) => {
+    const d = new Date(y, m + delta, 1);
+    return { y: d.getFullYear(), m: d.getMonth() };
+  });
+
+  return (
+    <div className="card" style={{ marginTop: 12 }}>
+      <div className="cal-head">
+        <button className="cal-nav" onClick={() => shift(-1)} aria-label="Previous month">‹</button>
+        <div className="cal-title">{MONTHS[m]} {y}</div>
+        <button className="cal-nav" onClick={() => shift(1)} disabled={isCurrentMonth} aria-label="Next month">›</button>
+      </div>
+      <div className="cal-grid">
+        {DOW.map((d, i) => <div key={i} className="cal-dow">{d}</div>)}
+      </div>
+      <div className="cal-grid" style={{ marginTop: 4 }}>
+        {cells.map((d, i) => {
+          if (d == null) return <div key={`e${i}`} className="cal-cell" />;
+          const key = `${monthPrefix}${String(d).padStart(2, '0')}`;
+          const cats = days?.get(key);
+          const cls = `cal-day${cats ? ' on' : ''}${key === todayStr ? ' today' : ''}`;
+          return <div key={key} className="cal-cell"><div className={cls} style={cats ? { background: dayBg(cats) } : undefined}>{d}</div></div>;
+        })}
+      </div>
+      <div className="faint" style={{ fontSize: 11, marginTop: 10 }}>
+        {monthCount} {monthCount === 1 ? 'day' : 'days'} at the gym{isCurrentMonth ? ' this month' : ''}
+      </div>
+      {legend.length > 0 && (
+        <div className="cal-legend">
+          {legend.map((k) => (
+            <span key={k} className="cal-legend-item">
+              <span className="cat-dot" style={{ background: catColor(k) }} />{catLabel(k)}
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 function RadarTip({ active, payload }) {
   if (!active || !payload?.length) return null;
@@ -98,6 +187,10 @@ export default function ProgressView({ units, sex, ageBand, bodyweight }) {
           <div className="stat"><div className="n">{(stats.thisWeekVolume || 0).toLocaleString()}</div><div className="l">vol this week</div></div>
         </div>
       )}
+
+      {/* --- month calendar: which days you trained --- */}
+      <div className="section-title">Gym calendar</div>
+      <WorkoutCalendar />
 
       {/* --- strength vs average radar (group set in Settings) --- */}
       <div className="section-title">Strength vs average</div>

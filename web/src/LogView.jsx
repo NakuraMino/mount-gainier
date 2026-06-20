@@ -54,6 +54,7 @@ export default function LogView({ units, editId, onSaved, onCancelEdit }) {
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState('');
   const [newCat, setNewCat] = useState('upper');
+  const [newBodyweight, setNewBodyweight] = useState(false);
   const [workoutId, setWorkoutId] = useState(editing ? editId : null); // create on finish; update when editing
   const [loadingEdit, setLoadingEdit] = useState(editing);
   const [finishing, setFinishing] = useState(false);
@@ -136,8 +137,6 @@ export default function LogView({ units, editId, onSaved, onCancelEdit }) {
       if (!sets.length || !isEmptySet(sets[sets.length - 1])) sets = [...sets, EMPTY_SET()];
       return { ...d, [exId]: { ...d[exId], sets } };
     });
-  const setRepsOnly = (exId, val) =>
-    setDraft((d) => ({ ...d, [exId]: { ...d[exId], sets: [{ weight: '', reps: val }] } }));
   const fillWeight = (exId, w) =>
     setDraft((d) => {
       const sets = d[exId].sets.map((s) => (isEmptySet(s) ? s : s)); // leave filled as-is
@@ -151,9 +150,10 @@ export default function LogView({ units, editId, onSaved, onCancelEdit }) {
     if (!name) return;
     setError('');
     try {
-      const r = await api.addExercise({ name, category: newCat });
+      const r = await api.addExercise({ name, category: newCat, equipment: newBodyweight ? 'bodyweight' : '' });
       const ex = r.exercise;
       setNewName('');
+      setNewBodyweight(false);
       setCreating(false);
       await loadLib();
       if (ex) addToSession(ex);
@@ -283,9 +283,13 @@ export default function LogView({ units, editId, onSaved, onCancelEdit }) {
               {CAT_ORDER.map((k) => <option key={k} value={k}>{CAT_META[k]?.label || k}</option>)}
             </select>
           </label>
+          <label className="toggle" style={{ marginBottom: 12, display: 'flex' }}>
+            <input type="checkbox" checked={newBodyweight} onChange={(e) => setNewBodyweight(e.target.checked)} />
+            Bodyweight only — log reps, no weight
+          </label>
           <div className="row">
             <button className="btn small" onClick={createExercise} disabled={!newName.trim()}>Create & add</button>
-            <button className="btn ghost small" onClick={() => { setCreating(false); setNewName(''); }}>Cancel</button>
+            <button className="btn ghost small" onClick={() => { setCreating(false); setNewName(''); setNewBodyweight(false); }}>Cancel</button>
           </div>
         </div>
       )}
@@ -328,18 +332,22 @@ export default function LogView({ units, editId, onSaved, onCancelEdit }) {
                   <>
                     <div className="lasttime" style={{ marginTop: 6 }}>
                       {lt && lt.sets?.length ? (
-                        <>Last time: <b>{maxReps(lt.sets)} reps</b></>
+                        <>Last time: <b>{maxReps(lt.sets)} reps</b>{lt.sets.length > 1 ? <span className="faint"> · {lt.sets.length} sets</span> : null}</>
                       ) : (
                         <span className="faint">No history yet — first time logging this.</span>
                       )}
                     </div>
-                    <div className="set-row" style={{ gridTemplateColumns: '1fr', marginTop: 10 }}>
-                      <input
-                        type="number" inputMode="numeric"
-                        placeholder={lt && lt.sets?.length ? `${maxReps(lt.sets)} reps` : 'reps'}
-                        value={e.sets[0]?.reps ?? ''} onChange={(ev) => setRepsOnly(exId, ev.target.value)}
-                      />
-                    </div>
+                    {e.sets.map((s, i) => (
+                      <div className="set-row" key={i} style={{ gridTemplateColumns: '26px 1fr 34px' }}>
+                        <span className="setno">{i + 1}</span>
+                        <input
+                          type="number" inputMode="numeric"
+                          placeholder={lt && lt.sets?.length ? `${maxReps(lt.sets)} reps` : `${ex.default_reps} reps`}
+                          value={s.reps} onChange={(ev) => patchSet(exId, i, 'reps', ev.target.value)}
+                        />
+                        <button className="iconbtn" style={{ width: 34, height: 34 }} onClick={() => removeSet(exId, i)} title="Remove set" disabled={e.sets.length <= 1}>×</button>
+                      </div>
+                    ))}
                   </>
                 ) : (
                   <>
