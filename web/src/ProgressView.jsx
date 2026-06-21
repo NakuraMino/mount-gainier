@@ -19,7 +19,7 @@ const ACCENT = '#fc5200';
 const shortDate = (s) => new Date(s + 'T00:00:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 
 const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
-const DOW = ['M', 'T', 'W', 'T', 'F', 'S', 'S']; // week starts Monday, matching the streak logic
+const DOW = ['S', 'M', 'T', 'W', 'T', 'F', 'S']; // week starts Sunday, matching the streak logic
 // Local YYYY-MM-DD (not toISOString, which is UTC and can land on the wrong day).
 const ymd = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
@@ -52,7 +52,7 @@ function WorkoutCalendar() {
   }, []);
 
   const { y, m } = view;
-  const offset = (new Date(y, m, 1).getDay() + 6) % 7; // blanks before day 1 (Mon-start)
+  const offset = new Date(y, m, 1).getDay(); // blanks before day 1 (Sun-start)
   const total = new Date(y, m + 1, 0).getDate();
   const cells = [...Array(offset).fill(null), ...Array.from({ length: total }, (_, i) => i + 1)];
 

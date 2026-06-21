@@ -531,10 +531,10 @@ export async function mainLifts(userId) {
 
 // --- overview stats ----------------------------------------------------------
 
-// Monday-based week key (YYYY-Www-ish: we just use the Monday date string).
-function mondayOf(dateStr) {
+// Sunday-based week key (we just use the Sunday date string).
+function sundayOf(dateStr) {
   const d = new Date(dateStr + 'T00:00:00');
-  const day = (d.getDay() + 6) % 7; // 0 = Monday
+  const day = d.getDay(); // 0 = Sunday
   d.setDate(d.getDate() - day);
   return d.toISOString().slice(0, 10);
 }
@@ -547,14 +547,14 @@ export async function stats(userId) {
   const volByWorkout = new Map();
   for (const s of sets) volByWorkout.set(s.workout_id, (volByWorkout.get(s.workout_id) || 0) + (s.weight || 0) * (s.reps || 0));
 
-  const thisMonday = mondayOf(new Date().toISOString().slice(0, 10));
+  const thisSunday = sundayOf(new Date().toISOString().slice(0, 10));
   let thisWeekVolume = 0;
   let workoutsThisWeek = 0;
   const weeksWithWork = new Set();
   for (const w of workouts) {
-    const wk = mondayOf(w.date);
+    const wk = sundayOf(w.date);
     weeksWithWork.add(wk);
-    if (wk === thisMonday) {
+    if (wk === thisSunday) {
       workoutsThisWeek += 1;
       thisWeekVolume += volByWorkout.get(w.id) || 0;
     }
@@ -563,9 +563,9 @@ export async function stats(userId) {
   // Consecutive-week streak ending at the current (or most recent) week.
   let weekStreak = 0;
   if (weeksWithWork.size) {
-    const cursor = new Date(thisMonday + 'T00:00:00');
+    const cursor = new Date(thisSunday + 'T00:00:00');
     // if no work yet this week, start the count from last week instead of breaking
-    if (!weeksWithWork.has(thisMonday)) cursor.setDate(cursor.getDate() - 7);
+    if (!weeksWithWork.has(thisSunday)) cursor.setDate(cursor.getDate() - 7);
     while (weeksWithWork.has(cursor.toISOString().slice(0, 10))) {
       weekStreak += 1;
       cursor.setDate(cursor.getDate() - 7);
