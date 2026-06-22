@@ -158,6 +158,11 @@ label.field > span { display: block; font-size: 12px; color: var(--text-dim); ma
 .set-row .setno { color: var(--text-faint); font-size: 13px; text-align: center; font-weight: 700; }
 .set-row input { padding: 10px; }
 .set-row.done input { opacity: .5; }
+.set-row.pr input { border-color: color-mix(in srgb, #f59e0b 60%, var(--line)); }
+.set-pr {
+  display: flex; align-items: center; gap: 6px; margin-top: 5px; padding-left: 34px;
+  font-size: 12px; font-weight: 800; color: #f59e0b;
+}
 .set-check {
   border: 1px solid var(--line); background: var(--bg-elev); color: var(--text-faint);
   width: 34px; height: 34px; border-radius: 12px; display: grid; place-items: center;

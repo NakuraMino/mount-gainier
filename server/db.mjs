@@ -206,6 +206,21 @@ function computeSuggestion(ex, last) {
 export async function logScreen(userId, category) {
   const exercises = await listExercises(userId, category || undefined);
   const { sets, meta } = await loadHistory(userId);
+
+  // All-time per-set bests per exercise, for in-session PR detection: heaviest set,
+  // best estimated 1RM, most reps (bodyweight). One pass over every set, then round
+  // e1rm to 1 decimal to match how the client recomputes it when comparing.
+  const prByEx = new Map();
+  for (const s of sets) {
+    const cur = prByEx.get(s.exercise_id) || { weight: null, e1rm: null, reps: null };
+    if (s.weight != null && (cur.weight == null || s.weight > cur.weight)) cur.weight = s.weight;
+    const e = epley(s.weight, s.reps);
+    if (e != null && (cur.e1rm == null || e > cur.e1rm)) cur.e1rm = e;
+    if (s.reps != null && (cur.reps == null || s.reps > cur.reps)) cur.reps = s.reps;
+    prByEx.set(s.exercise_id, cur);
+  }
+  for (const cur of prByEx.values()) if (cur.e1rm != null) cur.e1rm = Math.round(cur.e1rm * 10) / 10;
+
   return {
     category: category || null,
     exercises: exercises.map((ex) => {
@@ -217,6 +232,7 @@ export async function logScreen(userId, category) {
           ? { date: last.date, sets: last.sets, topSet: last.topSet, e1rm: last.e1rm, ready_to_progress: last.ready_to_progress }
           : null,
         suggestion: computeSuggestion(ex, last),
+        pr: prByEx.get(ex.id) || null, // null when the exercise has no history yet
       };
     }),
   };

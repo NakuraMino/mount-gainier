@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, Fragment } from 'react';
 import { api } from './api.js';
 import { CAT_META, catColor } from './categories.js';
 import RestTimer, { clampSecs } from './RestTimer.jsx';
@@ -292,6 +292,31 @@ export default function LogView({ units, editId, onSaved, onCancelEdit }) {
     setDate(todayStr()); setCardio(''); setNotes(''); setError('');
   };
 
+  // A logged set is a PR when it beats this exercise's all-time best (sent by the
+  // API). Only flagged once there's history to beat — the first-ever session sets
+  // the baseline rather than celebrating every set. Returns a label, or null.
+  const setPr = (ex, s) => {
+    const pr = ex.pr;
+    if (!pr) return null;
+    if (isRepsOnly(ex)) {
+      const reps = Number(s.reps);
+      if (pr.reps == null || !(reps > pr.reps)) return null;
+      return `most reps yet (${reps})`;
+    }
+    if (String(s.weight).trim() === '') return null;
+    const weight = Number(s.weight);
+    if (!Number.isFinite(weight)) return null;
+    const weightPR = pr.weight != null && weight > pr.weight;
+    const reps = Number(s.reps);
+    const hasReps = String(s.reps).trim() !== '' && Number.isFinite(reps) && reps > 0;
+    const e1 = hasReps ? Math.round(weight * (1 + reps / 30) * 10) / 10 : null;
+    const e1rmPR = e1 != null && pr.e1rm != null && e1 > pr.e1rm;
+    if (weightPR && e1rmPR) return `heaviest yet & best est. 1RM (${Math.round(e1)})`;
+    if (weightPR) return `heaviest yet (${weight} ${units})`;
+    if (e1rmPR) return `best est. 1RM (${Math.round(e1)})`;
+    return null;
+  };
+
   const setSummary = (e) => {
     const filled = e.sets.filter((s) => !isEmptySet(s));
     if (!filled.length) return 'no sets yet';
@@ -424,18 +449,24 @@ export default function LogView({ units, editId, onSaved, onCancelEdit }) {
                         <span className="faint">No history yet — first time logging this.</span>
                       )}
                     </div>
-                    {e.sets.map((s, i) => (
-                      <div className={`set-row${s.done ? ' done' : ''}`} key={i} style={{ gridTemplateColumns: '26px 1fr 34px 34px' }}>
-                        <span className="setno">{i + 1}</span>
-                        <input
-                          type="number" inputMode="numeric"
-                          placeholder={lt && lt.sets?.length ? `${maxReps(lt.sets)} reps` : `${ex.default_reps} reps`}
-                          value={s.reps} onChange={(ev) => patchSet(exId, i, 'reps', ev.target.value)}
-                        />
-                        <button className={`set-check${s.done ? ' on' : ''}`} onClick={() => toggleSetDone(exId, i)} disabled={isEmptySet(s)} title="Mark set done & start rest">✓</button>
-                        <button className="iconbtn" style={{ width: 34, height: 34 }} onClick={() => removeSet(exId, i)} title="Remove set" disabled={e.sets.length <= 1}>×</button>
-                      </div>
-                    ))}
+                    {e.sets.map((s, i) => {
+                      const pr = setPr(ex, s);
+                      return (
+                        <Fragment key={i}>
+                          <div className={`set-row${s.done ? ' done' : ''}${pr ? ' pr' : ''}`} style={{ gridTemplateColumns: '26px 1fr 34px 34px' }}>
+                            <span className="setno">{i + 1}</span>
+                            <input
+                              type="number" inputMode="numeric"
+                              placeholder={lt && lt.sets?.length ? `${maxReps(lt.sets)} reps` : `${ex.default_reps} reps`}
+                              value={s.reps} onChange={(ev) => patchSet(exId, i, 'reps', ev.target.value)}
+                            />
+                            <button className={`set-check${s.done ? ' on' : ''}`} onClick={() => toggleSetDone(exId, i)} disabled={isEmptySet(s)} title="Mark set done & start rest">✓</button>
+                            <button className="iconbtn" style={{ width: 34, height: 34 }} onClick={() => removeSet(exId, i)} title="Remove set" disabled={e.sets.length <= 1}>×</button>
+                          </div>
+                          {pr && <div className="set-pr">🏆 New PR — {pr}</div>}
+                        </Fragment>
+                      );
+                    })}
                   </>
                 ) : (
                   <>
@@ -457,21 +488,27 @@ export default function LogView({ units, editId, onSaved, onCancelEdit }) {
                       </div>
                     )}
 
-                    {e.sets.map((s, i) => (
-                      <div className={`set-row${s.done ? ' done' : ''}`} key={i}>
-                        <span className="setno">{i + 1}</span>
-                        <input
-                          type="number" inputMode="decimal" placeholder={lt?.topSet?.weight != null ? `${lt.topSet.weight} ${units}` : units}
-                          value={s.weight} onChange={(ev) => patchSet(exId, i, 'weight', ev.target.value)}
-                        />
-                        <input
-                          type="number" inputMode="numeric" placeholder={lt?.topSet?.reps != null ? `${lt.topSet.reps} reps` : `${ex.default_reps} reps`}
-                          value={s.reps} onChange={(ev) => patchSet(exId, i, 'reps', ev.target.value)}
-                        />
-                        <button className={`set-check${s.done ? ' on' : ''}`} onClick={() => toggleSetDone(exId, i)} disabled={isEmptySet(s)} title="Mark set done & start rest">✓</button>
-                        <button className="iconbtn" style={{ width: 34, height: 34 }} onClick={() => removeSet(exId, i)} title="Remove set" disabled={e.sets.length <= 1}>×</button>
-                      </div>
-                    ))}
+                    {e.sets.map((s, i) => {
+                      const pr = setPr(ex, s);
+                      return (
+                        <Fragment key={i}>
+                          <div className={`set-row${s.done ? ' done' : ''}${pr ? ' pr' : ''}`}>
+                            <span className="setno">{i + 1}</span>
+                            <input
+                              type="number" inputMode="decimal" placeholder={lt?.topSet?.weight != null ? `${lt.topSet.weight} ${units}` : units}
+                              value={s.weight} onChange={(ev) => patchSet(exId, i, 'weight', ev.target.value)}
+                            />
+                            <input
+                              type="number" inputMode="numeric" placeholder={lt?.topSet?.reps != null ? `${lt.topSet.reps} reps` : `${ex.default_reps} reps`}
+                              value={s.reps} onChange={(ev) => patchSet(exId, i, 'reps', ev.target.value)}
+                            />
+                            <button className={`set-check${s.done ? ' on' : ''}`} onClick={() => toggleSetDone(exId, i)} disabled={isEmptySet(s)} title="Mark set done & start rest">✓</button>
+                            <button className="iconbtn" style={{ width: 34, height: 34 }} onClick={() => removeSet(exId, i)} title="Remove set" disabled={e.sets.length <= 1}>×</button>
+                          </div>
+                          {pr && <div className="set-pr">🏆 New PR — {pr}</div>}
+                        </Fragment>
+                      );
+                    })}
                   </>
                 )}
 
