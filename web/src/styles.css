@@ -154,9 +154,44 @@ label.field > span { display: block; font-size: 12px; color: var(--text-dim); ma
 .ex-head { display: flex; align-items: center; gap: 9px; background: none; border: 0; color: var(--text); padding: 0; cursor: pointer; text-align: left; min-width: 0; }
 .ex-head .ex-name { font-weight: 700; font-size: 16px; letter-spacing: -0.01em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ex-head .ex-done { color: var(--accent); font-weight: 800; }
-.set-row { display: grid; grid-template-columns: 26px 1fr 1fr 34px; gap: 8px; align-items: center; margin-top: 8px; }
+.set-row { display: grid; grid-template-columns: 26px 1fr 1fr 34px 34px; gap: 8px; align-items: center; margin-top: 8px; }
 .set-row .setno { color: var(--text-faint); font-size: 13px; text-align: center; font-weight: 700; }
 .set-row input { padding: 10px; }
+.set-row.done input { opacity: .5; }
+.set-check {
+  border: 1px solid var(--line); background: var(--bg-elev); color: var(--text-faint);
+  width: 34px; height: 34px; border-radius: 12px; display: grid; place-items: center;
+  font-size: 15px; font-weight: 800; transition: background .12s ease, color .12s ease;
+}
+.set-check.on { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
+.set-check:disabled { opacity: .4; }
+
+/* --- rest timer (floating, above the tab bar) ------------------------------*/
+.rest-bar {
+  position: fixed; left: 50%; transform: translateX(-50%);
+  bottom: calc(70px + env(safe-area-inset-bottom));
+  width: min(var(--maxw), calc(100% - 24px)); z-index: 25;
+  background: var(--bg-elev-2); border: 1px solid var(--line);
+  border-radius: 14px; box-shadow: var(--shadow); overflow: hidden;
+}
+.rest-bar.idle { background: color-mix(in srgb, var(--bg-elev) 90%, transparent); backdrop-filter: blur(8px); }
+.rest-bar.done { border-color: color-mix(in srgb, var(--accent) 55%, var(--line)); }
+.rest-fill {
+  position: absolute; inset: 0; z-index: 0; transform-origin: left;
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  transition: transform .25s linear;
+}
+.rest-bar.done .rest-fill { background: color-mix(in srgb, var(--accent) 30%, transparent); }
+.rest-row { position: relative; z-index: 1; display: flex; align-items: center; gap: 8px; padding: 8px 10px; }
+.rest-time { font-variant-numeric: tabular-nums; font-weight: 800; font-size: 20px; letter-spacing: -0.02em; min-width: 62px; }
+.rest-bar.done .rest-time { color: var(--accent); }
+.rest-label { font-size: 12px; color: var(--text-dim); font-weight: 700; }
+.rest-spacer { flex: 1; }
+.rest-btn {
+  border: 1px solid var(--line); background: var(--bg-elev); color: var(--text);
+  border-radius: 10px; padding: 7px 10px; font-weight: 800; font-size: 13px; white-space: nowrap;
+}
+.rest-btn.accent { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
 .lasttime { font-size: 13px; color: var(--text-dim); }
 .lasttime b { color: var(--text); }
 .meta-row { display: flex; flex-wrap: wrap; gap: 14px; align-items: center; margin-top: 14px; }

@@ -1,8 +1,16 @@
 import { useEffect, useState, useCallback } from 'react';
 import { api } from './api.js';
 import { CAT_META, catColor } from './categories.js';
+import RestTimer, { clampSecs } from './RestTimer.jsx';
 
 const CAT_ORDER = ['upper', 'lower', 'back', 'other'];
+
+// Preferred rest length (seconds), remembered across sessions.
+const LS_REST = 'gymtracker.restsecs';
+const initRestSecs = () => {
+  const n = Number(localStorage.getItem(LS_REST));
+  return n >= 15 && n <= 600 ? n : 90;
+};
 
 const todayStr = () => {
   const d = new Date();
@@ -59,6 +67,15 @@ export default function LogView({ units, editId, onSaved, onCancelEdit }) {
   const [loadingEdit, setLoadingEdit] = useState(editing);
   const [finishing, setFinishing] = useState(false);
   const [error, setError] = useState('');
+
+  // --- rest timer ---
+  const [restSecs, setRestSecs] = useState(initRestSecs); // preferred length
+  const [restEndsAt, setRestEndsAt] = useState(null);     // ms epoch while resting, else null
+  useEffect(() => { localStorage.setItem(LS_REST, String(restSecs)); }, [restSecs]);
+  const startRest = () => setRestEndsAt(Date.now() + restSecs * 1000);
+  // ± buttons on a live timer: if it already elapsed, extend from now so +15 resumes it.
+  const adjustRest = (delta) => setRestEndsAt((e) => (e ? Math.max(e, Date.now()) + delta * 1000 : e));
+  const stopRest = () => setRestEndsAt(null);
 
   const loadLib = useCallback(
     () => api.log('').then((r) => setLib(r.exercises)).catch((e) => setError(e.message)),
@@ -137,6 +154,15 @@ export default function LogView({ units, editId, onSaved, onCancelEdit }) {
       if (!sets.length || !isEmptySet(sets[sets.length - 1])) sets = [...sets, EMPTY_SET()];
       return { ...d, [exId]: { ...d[exId], sets } };
     });
+  // Tick a set complete (purely local, ignored on save). Checking it starts the rest.
+  const toggleSetDone = (exId, idx) => {
+    const wasDone = !!draft[exId]?.sets[idx]?.done;
+    setDraft((d) => ({
+      ...d,
+      [exId]: { ...d[exId], sets: d[exId].sets.map((s, i) => (i === idx ? { ...s, done: !s.done } : s)) },
+    }));
+    if (!wasDone) startRest();
+  };
   const fillWeight = (exId, w) =>
     setDraft((d) => {
       const sets = d[exId].sets.map((s) => (isEmptySet(s) ? s : s)); // leave filled as-is
@@ -238,7 +264,7 @@ export default function LogView({ units, editId, onSaved, onCancelEdit }) {
   if (editing && loadingEdit) return <div className="spinner">Loading…</div>;
 
   return (
-    <div>
+    <div style={{ paddingBottom: picked.length ? 84 : undefined }}>
       <div className="between">
         <h1 style={{ marginBottom: 0 }}>{editing ? 'Edit workout' : 'Log a workout'}</h1>
         <input type="date" value={date} onChange={(e) => setDate(e.target.value)} style={{ width: 'auto' }} />
@@ -338,13 +364,14 @@ export default function LogView({ units, editId, onSaved, onCancelEdit }) {
                       )}
                     </div>
                     {e.sets.map((s, i) => (
-                      <div className="set-row" key={i} style={{ gridTemplateColumns: '26px 1fr 34px' }}>
+                      <div className={`set-row${s.done ? ' done' : ''}`} key={i} style={{ gridTemplateColumns: '26px 1fr 34px 34px' }}>
                         <span className="setno">{i + 1}</span>
                         <input
                           type="number" inputMode="numeric"
                           placeholder={lt && lt.sets?.length ? `${maxReps(lt.sets)} reps` : `${ex.default_reps} reps`}
                           value={s.reps} onChange={(ev) => patchSet(exId, i, 'reps', ev.target.value)}
                         />
+                        <button className={`set-check${s.done ? ' on' : ''}`} onClick={() => toggleSetDone(exId, i)} disabled={isEmptySet(s)} title="Mark set done & start rest">✓</button>
                         <button className="iconbtn" style={{ width: 34, height: 34 }} onClick={() => removeSet(exId, i)} title="Remove set" disabled={e.sets.length <= 1}>×</button>
                       </div>
                     ))}
@@ -370,7 +397,7 @@ export default function LogView({ units, editId, onSaved, onCancelEdit }) {
                     )}
 
                     {e.sets.map((s, i) => (
-                      <div className="set-row" key={i}>
+                      <div className={`set-row${s.done ? ' done' : ''}`} key={i}>
                         <span className="setno">{i + 1}</span>
                         <input
                           type="number" inputMode="decimal" placeholder={lt?.topSet?.weight != null ? `${lt.topSet.weight} ${units}` : units}
@@ -380,6 +407,7 @@ export default function LogView({ units, editId, onSaved, onCancelEdit }) {
                           type="number" inputMode="numeric" placeholder={lt?.topSet?.reps != null ? `${lt.topSet.reps} reps` : `${ex.default_reps} reps`}
                           value={s.reps} onChange={(ev) => patchSet(exId, i, 'reps', ev.target.value)}
                         />
+                        <button className={`set-check${s.done ? ' on' : ''}`} onClick={() => toggleSetDone(exId, i)} disabled={isEmptySet(s)} title="Mark set done & start rest">✓</button>
                         <button className="iconbtn" style={{ width: 34, height: 34 }} onClick={() => removeSet(exId, i)} title="Remove set" disabled={e.sets.length <= 1}>×</button>
                       </div>
                     ))}
@@ -425,6 +453,18 @@ export default function LogView({ units, editId, onSaved, onCancelEdit }) {
             {editing ? 'Cancel' : 'Discard workout'}
           </button>
         </>
+      )}
+
+      {/* Floating rest timer — only while a workout is in progress. */}
+      {picked.length > 0 && (
+        <RestTimer
+          endsAt={restEndsAt}
+          duration={restSecs}
+          onStart={startRest}
+          onAdjust={adjustRest}
+          onSkip={stopRest}
+          onChangeDuration={(s) => setRestSecs(clampSecs(s))}
+        />
       )}
     </div>
   );
