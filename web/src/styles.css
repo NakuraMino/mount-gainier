@@ -207,6 +207,12 @@ label.field > span { display: block; font-size: 12px; color: var(--text-dim); ma
 .tpl-pick.on .tpl-pick-box { background: var(--accent); border-color: transparent; }
 .tpl-pick-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
 
+/* --- quick start: tap a routine to load it (Log tab, empty state) ----------*/
+.quick-start-head { font-size: 12px; color: var(--text-dim); font-weight: 700; margin-bottom: 10px; }
+.rtn-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.rtn-chip { font-size: 13px; padding: 9px 14px; }
+.rtn-chip:disabled { opacity: .5; }
+
 .lasttime { font-size: 13px; color: var(--text-dim); }
 .lasttime b { color: var(--text); }
 .meta-row { display: flex; flex-wrap: wrap; gap: 14px; align-items: center; margin-top: 14px; }

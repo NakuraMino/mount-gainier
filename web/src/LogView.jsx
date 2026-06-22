@@ -164,10 +164,6 @@ export default function LogView({ units, editId, onSaved, onCancelEdit }) {
     setDraft((d) => { const n = { ...d }; for (const id of newIds) n[id] = newEntry(); return n; });
     setCollapsed((c) => { const n = { ...c }; for (const id of newIds) n[id] = true; return n; });
   };
-  const onSelectTemplate = (val) => {
-    if (!val) return;
-    loadTemplate(templates.find((t) => String(t.id) === String(val)));
-  };
   // Snapshot the current picks as a reusable routine.
   const saveAsTemplate = async () => {
     const ids = picked.filter((id) => exById(id));
@@ -320,15 +316,25 @@ export default function LogView({ units, editId, onSaved, onCancelEdit }) {
         </div>
       )}
 
-      {/* start from a saved routine */}
-      {templates.length > 0 && (
-        <div style={{ marginTop: 16 }}>
-          <select className="cat-select" value="" disabled={!lib} onChange={(e) => onSelectTemplate(e.target.value)} style={{ width: '100%' }}>
-            <option value="">⚡ Start from a routine…</option>
+      {/* quick start: tap a routine to load it — shown only before you've
+          added anything, so it gets out of the way once the workout begins */}
+      {templates.length > 0 && picked.length === 0 && (
+        <div className="card quick-start" style={{ marginTop: 16 }}>
+          <div className="quick-start-head">⚡ Quick start from a routine</div>
+          <div className="rtn-chips">
             {templates.map((t) => (
-              <option key={t.id} value={t.id}>{t.name} ({t.exercises.length})</option>
+              <button
+                key={t.id}
+                type="button"
+                className="chip accent rtn-chip"
+                disabled={!lib}
+                onClick={() => loadTemplate(t)}
+                title={t.exercises.map((e) => e.name).join(', ')}
+              >
+                {t.name}
+              </button>
             ))}
-          </select>
+          </div>
         </div>
       )}
 
