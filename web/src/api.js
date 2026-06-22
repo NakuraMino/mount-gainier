@@ -74,6 +74,13 @@ export const api = {
   updateWorkout: (id, b) => put(`/api/workouts/${id}`, b),
   deleteWorkout: (id) => del(`/api/workouts/${id}`),
 
+  // Saved routines. templates() -> { templates: [{ id, name, category, exercises: [{exercise_id, name, category}] }] }
+  templates: () => j('/api/templates'),
+  createTemplate: (b) => post('/api/templates', b),
+  templateFromWorkout: (workoutId, b) => post(`/api/templates/from-workout/${workoutId}`, b),
+  updateTemplate: (id, b) => put(`/api/templates/${id}`, b),
+  deleteTemplate: (id) => del(`/api/templates/${id}`),
+
   progress: (exerciseId, range) => j(`/api/progress/${exerciseId}?range=${encodeURIComponent(range || 'all')}`),
   stats: () => j('/api/stats'),
   mainLifts: () => j('/api/main-lifts'),

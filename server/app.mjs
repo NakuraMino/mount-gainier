@@ -15,6 +15,7 @@ import {
   listExercises, addExercise, updateExercise, deleteExercise, categoryCounts,
   logScreen, listSessions, workoutDays, createSession, updateSession, getWorkout, deleteWorkout,
   exerciseHistory, progress, stats, getPrefs, setPrefs, exportRows, mainLifts,
+  listTemplates, createTemplate, updateTemplate, deleteTemplate, createTemplateFromWorkout,
 } from './db.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -98,6 +99,25 @@ api.put('/workouts/:id', wrap(async (req, res) => {
 }));
 api.delete('/workouts/:id', wrap(async (req, res) => {
   await deleteWorkout(req.userId, req.params.id);
+  res.json({ ok: true });
+}));
+
+// --- templates (saved routines) ----------------------------------------------
+api.get('/templates', wrap(async (req, res) => {
+  res.json({ templates: await listTemplates(req.userId) });
+}));
+api.post('/templates', wrap(async (req, res) => {
+  res.json({ template: await createTemplate(req.userId, req.body || {}) });
+}));
+// Snapshot an existing session into a template ("save this workout as a routine").
+api.post('/templates/from-workout/:workoutId', wrap(async (req, res) => {
+  res.json({ template: await createTemplateFromWorkout(req.userId, req.params.workoutId, req.body || {}) });
+}));
+api.put('/templates/:id', wrap(async (req, res) => {
+  res.json({ template: await updateTemplate(req.userId, req.params.id, req.body || {}) });
+}));
+api.delete('/templates/:id', wrap(async (req, res) => {
+  await deleteTemplate(req.userId, req.params.id);
   res.json({ ok: true });
 }));
 

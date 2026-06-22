@@ -5,6 +5,7 @@ import LoginView from './LoginView.jsx';
 import LogView from './LogView.jsx';
 import HistoryView from './HistoryView.jsx';
 import ExercisesModal from './ExercisesModal.jsx';
+import TemplatesModal from './TemplatesModal.jsx';
 import SettingsModal from './SettingsModal.jsx';
 
 // The Progress tab pulls in recharts (the bulk of the JS bundle) but isn't the
@@ -30,6 +31,7 @@ export default function App() {
   const [tab, setTab] = useState(localStorage.getItem(LS_TAB) || 'log');
   const [editId, setEditId] = useState(null); // workout being edited in the Log tab, else null
   const [showExercises, setShowExercises] = useState(false);
+  const [showTemplates, setShowTemplates] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [sex, setSex] = useState(localStorage.getItem(LS_SEX) || 'male');
   const [ageBand, setAgeBand] = useState(localStorage.getItem(LS_AGE) || '25-34');
@@ -102,6 +104,7 @@ export default function App() {
           <img src="/icon.svg" alt="" /> Gym Tracker
         </div>
         <div className="spacer" />
+        <button className="iconbtn" title="Routines" onClick={() => setShowTemplates(true)}>📋</button>
         <button className="iconbtn" title="Exercises" onClick={() => setShowExercises(true)}>🏋️</button>
         <button className="iconbtn" title="Settings" onClick={() => setShowSettings(true)}>⚙️</button>
         <button
@@ -141,6 +144,8 @@ export default function App() {
       </nav>
 
       {showExercises && <ExercisesModal onClose={() => setShowExercises(false)} />}
+
+      {showTemplates && <TemplatesModal onClose={() => setShowTemplates(false)} />}
 
       {showSettings && (
         <SettingsModal

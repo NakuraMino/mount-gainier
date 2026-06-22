@@ -77,6 +77,17 @@ export default function LogView({ units, editId, onSaved, onCancelEdit }) {
   const adjustRest = (delta) => setRestEndsAt((e) => (e ? Math.max(e, Date.now()) + delta * 1000 : e));
   const stopRest = () => setRestEndsAt(null);
 
+  // --- templates (saved routines) ---
+  const [templates, setTemplates] = useState([]);
+  const [tplMsg, setTplMsg] = useState('');
+  // Loaded silently: the endpoint 500s until the templates table exists, and a
+  // missing routines list shouldn't block logging.
+  const loadTemplates = useCallback(
+    () => api.templates().then((r) => setTemplates(r.templates || [])).catch(() => {}),
+    [],
+  );
+  useEffect(() => { loadTemplates(); }, [loadTemplates]);
+
   const loadLib = useCallback(
     () => api.log('').then((r) => setLib(r.exercises)).catch((e) => setError(e.message)),
     [],
@@ -138,6 +149,38 @@ export default function LogView({ units, editId, onSaved, onCancelEdit }) {
     if (ex) addToSession(ex);
   };
   const toggleCollapse = (exId) => setCollapsed((c) => ({ ...c, [exId]: !c[exId] }));
+
+  // --- routines ---
+  // Append a saved routine's exercises (collapsed; skipping ones already in the
+  // session or since-deleted from the library). Non-destructive, so it's safe
+  // mid-workout, not just on a fresh log.
+  const loadTemplate = (tpl) => {
+    if (!tpl) return;
+    const newIds = tpl.exercises
+      .map((e) => e.exercise_id)
+      .filter((id) => exById(id) && !picked.includes(id));
+    if (!newIds.length) return;
+    setPicked((p) => [...p, ...newIds]);
+    setDraft((d) => { const n = { ...d }; for (const id of newIds) n[id] = newEntry(); return n; });
+    setCollapsed((c) => { const n = { ...c }; for (const id of newIds) n[id] = true; return n; });
+  };
+  const onSelectTemplate = (val) => {
+    if (!val) return;
+    loadTemplate(templates.find((t) => String(t.id) === String(val)));
+  };
+  // Snapshot the current picks as a reusable routine.
+  const saveAsTemplate = async () => {
+    const ids = picked.filter((id) => exById(id));
+    if (!ids.length) return;
+    const name = (prompt('Name this routine:', '') || '').trim();
+    if (!name) return;
+    setTplMsg(''); setError('');
+    try {
+      await api.createTemplate({ name, exercise_ids: ids });
+      await loadTemplates();
+      setTplMsg(`Saved “${name}” to your routines.`);
+    } catch (e) { setError(e.message); }
+  };
 
   // --- draft mutations ---
   const patchEntry = (exId, patch) => setDraft((d) => ({ ...d, [exId]: { ...d[exId], ...patch } }));
@@ -274,6 +317,18 @@ export default function LogView({ units, editId, onSaved, onCancelEdit }) {
         <div className="banner ok" style={{ marginTop: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
           <span>Editing a saved workout</span>
           <button className="btn ghost small" onClick={() => onCancelEdit?.()}>Cancel</button>
+        </div>
+      )}
+
+      {/* start from a saved routine */}
+      {templates.length > 0 && (
+        <div style={{ marginTop: 16 }}>
+          <select className="cat-select" value="" disabled={!lib} onChange={(e) => onSelectTemplate(e.target.value)} style={{ width: '100%' }}>
+            <option value="">⚡ Start from a routine…</option>
+            {templates.map((t) => (
+              <option key={t.id} value={t.id}>{t.name} ({t.exercises.length})</option>
+            ))}
+          </select>
         </div>
       )}
 
@@ -452,6 +507,10 @@ export default function LogView({ units, editId, onSaved, onCancelEdit }) {
           <button className="btn ghost block" style={{ marginTop: 10 }} onClick={discard} disabled={finishing}>
             {editing ? 'Cancel' : 'Discard workout'}
           </button>
+          <button className="btn ghost block small" style={{ marginTop: 10 }} onClick={saveAsTemplate} disabled={finishing}>
+            ☆ Save these exercises as a routine
+          </button>
+          {tplMsg && <div className="banner ok" style={{ marginTop: 10 }}>{tplMsg}</div>}
         </>
       )}
 

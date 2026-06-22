@@ -428,6 +428,139 @@ export async function workoutDays(userId) {
   return data || [];
 }
 
+// --- templates (saved routines) ----------------------------------------------
+// A template is a named, ordered list of library exercises — no numbers. Loading
+// one only pre-populates the Log screen; nothing here writes to workouts/sets.
+
+// Keep only ids that are in the user's library, de-duped, in the given order; and
+// derive a single category when every exercise shares one (else null), mirroring
+// how a logged session picks its category.
+async function sanitizeTemplateExercises(userId, exerciseIds) {
+  const exMap = await exercisesById(userId);
+  const ids = [];
+  const seen = new Set();
+  for (const id of exerciseIds || []) {
+    if (exMap.has(id) && !seen.has(id)) { seen.add(id); ids.push(id); }
+  }
+  const cats = [...new Set(ids.map((id) => exMap.get(id).category))];
+  const category = cats.length === 1 && CATEGORY_KEYS.has(cats[0]) ? cats[0] : null;
+  return { ids, category };
+}
+
+// Replace a template's exercise list (delete-then-insert, like writeEntries).
+async function writeTemplateExercises(templateId, ids) {
+  const d = await supabase.from('template_exercises').delete().eq('template_id', templateId);
+  if (d.error) throw new Error(d.error.message);
+  if (ids.length) {
+    const rows = ids.map((exercise_id, i) => ({ template_id: templateId, exercise_id, position: i }));
+    const r = await supabase.from('template_exercises').insert(rows);
+    if (r.error) throw new Error(r.error.message);
+  }
+}
+
+export async function getTemplate(userId, id) {
+  const { data: t, error } = await supabase
+    .from('templates').select('*').eq('id', id).eq('user_id', userId).maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!t) return null;
+  const { data: rows, error: rErr } = await supabase
+    .from('template_exercises').select('exercise_id, position').eq('template_id', id)
+    .order('position', { ascending: true });
+  if (rErr) throw new Error(rErr.message);
+  const exMap = await exercisesById(userId);
+  const exercises = (rows || [])
+    .map((r) => { const ex = exMap.get(r.exercise_id); return ex ? { exercise_id: r.exercise_id, name: ex.name, category: ex.category } : null; })
+    .filter(Boolean);
+  return { id: t.id, name: t.name, category: t.category, exercises };
+}
+
+export async function listTemplates(userId) {
+  const { data: tpls, error } = await supabase
+    .from('templates').select('*').eq('user_id', userId)
+    .order('position', { ascending: true }).order('created_at', { ascending: true });
+  if (error) throw new Error(error.message);
+  if (!tpls?.length) return [];
+
+  const ids = tpls.map((t) => t.id);
+  const { data: rows, error: rErr } = await supabase
+    .from('template_exercises').select('template_id, exercise_id, position')
+    .in('template_id', ids).order('position', { ascending: true });
+  if (rErr) throw new Error(rErr.message);
+
+  const exMap = await exercisesById(userId);
+  const byTpl = new Map(ids.map((id) => [id, []]));
+  for (const r of rows || []) {
+    const ex = exMap.get(r.exercise_id);
+    if (ex) byTpl.get(r.template_id).push({ exercise_id: r.exercise_id, name: ex.name, category: ex.category });
+  }
+  return tpls.map((t) => ({ id: t.id, name: t.name, category: t.category, exercises: byTpl.get(t.id) || [] }));
+}
+
+export async function createTemplate(userId, body = {}) {
+  const name = String(body.name || '').trim();
+  if (!name) throw new Error('template name required');
+  const { ids, category } = await sanitizeTemplateExercises(userId, body.exercise_ids);
+  if (!ids.length) throw new Error('add at least one exercise');
+
+  const { count } = await supabase
+    .from('templates').select('*', { count: 'exact', head: true }).eq('user_id', userId);
+  const { data, error } = await supabase
+    .from('templates').insert({ user_id: userId, name, category, position: count || 0 })
+    .select('id').single();
+  if (error) {
+    if (/duplicate|unique/i.test(error.message)) throw new Error(`you already have a template named "${name}"`);
+    throw new Error(error.message);
+  }
+  await writeTemplateExercises(data.id, ids);
+  return getTemplate(userId, data.id);
+}
+
+export async function updateTemplate(userId, id, body = {}) {
+  const { data: t, error: e0 } = await supabase
+    .from('templates').select('id').eq('id', id).eq('user_id', userId).maybeSingle();
+  if (e0) throw new Error(e0.message);
+  if (!t) throw new Error('unknown template');
+
+  const patch = {};
+  if (body.name != null) {
+    const name = String(body.name).trim();
+    if (!name) throw new Error('template name required');
+    patch.name = name;
+  }
+  if (body.position != null) patch.position = intOrNull(body.position) ?? 0;
+
+  let ids = null;
+  if (body.exercise_ids != null) {
+    const s = await sanitizeTemplateExercises(userId, body.exercise_ids);
+    if (!s.ids.length) throw new Error('add at least one exercise');
+    ids = s.ids;
+    patch.category = s.category;
+  }
+  if (Object.keys(patch).length) {
+    const { error } = await supabase.from('templates').update(patch).eq('id', id).eq('user_id', userId);
+    if (error) {
+      if (/duplicate|unique/i.test(error.message)) throw new Error(`you already have a template named "${patch.name}"`);
+      throw new Error(error.message);
+    }
+  }
+  if (ids) await writeTemplateExercises(id, ids);
+  return getTemplate(userId, id);
+}
+
+export async function deleteTemplate(userId, id) {
+  const { error } = await supabase.from('templates').delete().eq('user_id', userId).eq('id', id);
+  if (error) throw new Error(error.message); // template_exercises cascade via FK
+}
+
+// Snapshot a logged session's exercises into a new template.
+export async function createTemplateFromWorkout(userId, workoutId, body = {}) {
+  const w = await getWorkout(userId, workoutId);
+  if (!w) throw new Error('unknown workout');
+  const ids = (w.entries || []).map((e) => e.exercise_id);
+  const name = String(body.name || '').trim() || `Routine from ${w.date}`;
+  return createTemplate(userId, { name, exercise_ids: ids });
+}
+
 // --- progress / charts -------------------------------------------------------
 
 const RANGES = { '1m': 30, '3m': 90, '6m': 182, '1y': 365, all: null };

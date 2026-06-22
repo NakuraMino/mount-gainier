@@ -79,6 +79,30 @@ create table if not exists prefs (
   units   text not null default 'lb' check (units in ('lb', 'kg'))
 );
 
+-- --- templates: saved routines (a named, ordered list of library exercises) -
+-- No numbers here — a template only pre-populates the Log screen. The actual
+-- weights/reps still come from logging. Exercises are referenced (not copied),
+-- so deleting an exercise drops it from any template via the cascade.
+create table if not exists templates (
+  id         uuid        primary key default gen_random_uuid(),
+  user_id    uuid        not null references auth.users (id) on delete cascade,
+  name       text        not null,
+  category   text,                                 -- upper|lower|back|null (derived)
+  position   int         not null default 0,       -- order in the picker
+  created_at timestamptz not null default now(),
+  unique (user_id, name)
+);
+create index if not exists idx_templates_user on templates (user_id, position);
+
+create table if not exists template_exercises (
+  id          uuid primary key default gen_random_uuid(),
+  template_id uuid not null references templates (id) on delete cascade,
+  exercise_id uuid not null references exercises (id) on delete cascade,
+  position    int  not null default 0,
+  unique (template_id, exercise_id)
+);
+create index if not exists idx_template_exercises on template_exercises (template_id, position);
+
 -- --- lock everything down ----------------------------------------------------
 -- The server uses the service-role key (bypasses RLS); the browser never touches
 -- these tables directly. RLS on with no policies = anon key can't read/write.
@@ -88,3 +112,5 @@ alter table workouts          enable row level security;
 alter table sets              enable row level security;
 alter table workout_exercises enable row level security;
 alter table prefs             enable row level security;
+alter table templates         enable row level security;
+alter table template_exercises enable row level security;
